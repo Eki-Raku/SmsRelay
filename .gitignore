@@ -1,0 +1,30 @@
+# Android Studio / Gradle
+.gradle/
+.idea/
+.workbuddy/
+**/build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.iml
+
+# Local SDK and signing material
+local.properties
+keystore.properties
+*.jks
+*.keystore
+
+# Local release artifacts and acceptance evidence
+dist/
+test-results/
+CHECKSUMS.sha256
+TEST_REPORT.md
+docs/superpowers/
+relay/
+scripts/run-emulator-e2e.sh
+
+# OS / editor files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo

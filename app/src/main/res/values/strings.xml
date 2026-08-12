@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">短信信使</string>
+    <string name="notification_channel_failures">转发失败</string>
+    <string name="notification_failure_title">短信转发失败</string>
+    <string name="notification_failure_body">有短信未能转发，点此查看原因。</string>
+</resources>
+
