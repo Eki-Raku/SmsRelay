@@ -10,11 +10,16 @@ import com.raku.smsrelay.receiver.ParsedSms
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+data class SmsInboxInsert(
+    val uri: Uri,
+    val threadId: Long,
+)
+
 class SystemSmsRepository(context: Context) {
     private val resolver: ContentResolver = context.applicationContext.contentResolver
     private val appContext = context.applicationContext
 
-    suspend fun insertInbox(message: ParsedSms): Uri = withContext(Dispatchers.IO) {
+    suspend fun insertInbox(message: ParsedSms): SmsInboxInsert = withContext(Dispatchers.IO) {
         val threadId = Telephony.Threads.getOrCreateThreadId(appContext, message.sender)
         val values = ContentValues().apply {
             put(Telephony.Sms.ADDRESS, message.sender)
@@ -26,9 +31,33 @@ class SystemSmsRepository(context: Context) {
             put(Telephony.Sms.THREAD_ID, threadId)
             message.subscriptionId?.let { put(COLUMN_SUBSCRIPTION_ID, it) }
         }
-        requireNotNull(resolver.insert(Telephony.Sms.Inbox.CONTENT_URI, values)) {
+        val uri = requireNotNull(resolver.insert(Telephony.Sms.Inbox.CONTENT_URI, values)) {
             "系统短信收件箱写入失败"
         }
+        SmsInboxInsert(uri = uri, threadId = threadId)
+    }
+
+    suspend fun unreadCount(threadId: Long): Int = withContext(Dispatchers.IO) {
+        resolver.query(
+            Telephony.Sms.CONTENT_URI,
+            arrayOf(Telephony.Sms._ID),
+            "${Telephony.Sms.THREAD_ID} = ? AND ${Telephony.Sms.READ} = 0",
+            arrayOf(threadId.toString()),
+            null,
+        )?.use { it.count } ?: 0
+    }
+
+    suspend fun markThreadRead(threadId: Long) = withContext(Dispatchers.IO) {
+        val values = ContentValues().apply {
+            put(Telephony.Sms.READ, 1)
+            put(Telephony.Sms.SEEN, 1)
+        }
+        resolver.update(
+            Telephony.Sms.CONTENT_URI,
+            values,
+            "${Telephony.Sms.THREAD_ID} = ? AND (${Telephony.Sms.READ} = 0 OR ${Telephony.Sms.SEEN} = 0)",
+            arrayOf(threadId.toString()),
+        )
     }
 
     suspend fun conversations(limit: Int = 200): List<SmsConversation> = withContext(Dispatchers.IO) {

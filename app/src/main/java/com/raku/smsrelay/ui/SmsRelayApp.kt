@@ -50,6 +50,9 @@ fun SmsRelayApp(
     LaunchedEffect(composeRecipient) {
         if (composeRecipient.isNotBlank()) destination = AppDestination.MESSAGES
     }
+    LaunchedEffect(selectedThreadId) {
+        if (selectedThreadId != null) destination = AppDestination.MESSAGES
+    }
     LaunchedEffect(onboarding.visible, onboarding.step) {
         if (onboarding.visible) {
             destination = if (onboarding.step == OnboardingStep.SETTINGS) {
@@ -65,7 +68,11 @@ fun SmsRelayApp(
             Scaffold(
                 containerColor = MaterialTheme.colorScheme.background,
                 bottomBar = {
-                    SmsRelayNavigationBar(selected = destination, onSelect = { destination = it })
+                    SmsRelayNavigationBar(
+                        selected = destination,
+                        hasUnreadMessages = conversations.any { it.unread },
+                        onSelect = { destination = it },
+                    )
                 },
                 snackbarHost = { SnackbarHost(snackbarHostState) },
             ) { padding ->

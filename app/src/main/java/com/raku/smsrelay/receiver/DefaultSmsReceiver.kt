@@ -17,7 +17,11 @@ class DefaultSmsReceiver : BroadcastReceiver() {
                 val application = context.applicationContext as? SmsRelayApplication ?: return@launch
                 if (!application.container.smsRoleManager.isHeld()) return@launch
                 val parsed = SmsParser.parse(intent) ?: return@launch
-                application.container.systemSmsRepository.insertInbox(parsed)
+                val inserted = application.container.systemSmsRepository.insertInbox(parsed)
+                runCatching {
+                    val unreadCount = application.container.systemSmsRepository.unreadCount(inserted.threadId)
+                    application.container.incomingSmsNotifier.show(parsed, inserted.threadId, unreadCount)
+                }
                 application.container.forwardIngress.accept(parsed)
             } finally {
                 pendingResult.finish()

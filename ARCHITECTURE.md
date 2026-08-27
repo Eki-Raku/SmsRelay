@@ -18,6 +18,7 @@ SmsRelay 是一个本地优先的 Android 短信转邮件应用。备用机收�
 flowchart TD
     A["系统 SMS_DELIVER"] --> B["DefaultSmsReceiver"]
     B --> C["系统短信收件箱"]
+    C --> J["新短信系统通知"]
     B --> D["ForwardIngress"]
     D --> E["Room Outbox"]
     E --> F["WorkManager"]
@@ -35,7 +36,7 @@ flowchart TD
 | 系统角色 | `SmsRoleManager` | 请求和检查默认短信应用角色 |
 | 系统入口 | `DefaultSmsReceiver`、`SmsReceiver` | 接收默认角色与兼容模式短信广播 |
 | 解析和入口 | `SmsParser`、`ForwardIngress` | 合并 PDU、写系统收件箱、去重入队 |
-| 系统短信 | `SystemSmsRepository`、`SmsSendController` | 读取会话与短信发送 |
+| 系统短信 | `SystemSmsRepository`、`SmsSendController`、`IncomingSmsNotifier` | 读取会话、已读状态、短信发送和新短信系统通知 |
 | 数据 | `ForwardMessageEntity`、`ForwardMessageDao` | Room Outbox、状态和唯一索引 |
 | 调度 | `ForwardScheduler`、`ForwardSmsWorker` | 唯一任务、指数退避和 SMTP 投递 |
 | 配置 | `SettingsRepository`、`SmtpSettingsPolicy` | 独立发件/收件地址、运行开关和配置完整性 |
@@ -96,4 +97,3 @@ flowchart LR
 ## 构建与签名边界
 
 公开仓库不包含维护者的 keystore 或密码。本地存在完整 `keystore.properties` 时，Gradle 使用该配置签名 release；缺失时可以构建 unsigned release，但不能直接安装或分发。GitHub Releases 中的官方 APK 由维护者本地签名并附 SHA-256。
-

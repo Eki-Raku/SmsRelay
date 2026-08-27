@@ -17,6 +17,7 @@ import androidx.core.content.ContextCompat
 import com.raku.smsrelay.onboarding.MessagingPermissionState
 import com.raku.smsrelay.onboarding.OnboardingStep
 import com.raku.smsrelay.ui.SmsRelayApp
+import com.raku.smsrelay.sms.IncomingSmsNotifier
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
@@ -80,6 +81,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleSmsIntent(intent: Intent?) {
+        if (intent?.action == IncomingSmsNotifier.ACTION_OPEN_CONVERSATION) {
+            intent.getLongExtra(IncomingSmsNotifier.EXTRA_THREAD_ID, -1L)
+                .takeIf { it >= 0L }
+                ?.let(viewModel::openConversation)
+            return
+        }
         if (intent?.action != Intent.ACTION_SENDTO) return
         val scheme = intent.data?.scheme.orEmpty()
         if (scheme !in setOf("sms", "smsto", "mms", "mmsto")) return

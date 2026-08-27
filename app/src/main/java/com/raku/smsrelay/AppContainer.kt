@@ -11,6 +11,7 @@ import com.raku.smsrelay.receiver.ForwardIngress
 import com.raku.smsrelay.role.SmsRoleManager
 import com.raku.smsrelay.sms.SystemSmsRepository
 import com.raku.smsrelay.sms.SmsSendController
+import com.raku.smsrelay.sms.IncomingSmsNotifier
 
 class AppContainer(context: Context) {
     val database: AppDatabase = AppDatabase.create(context)
@@ -20,6 +21,7 @@ class AppContainer(context: Context) {
     val smsRoleManager = SmsRoleManager(context)
     val systemSmsRepository = SystemSmsRepository(context)
     val smsSendController = SmsSendController(context, systemSmsRepository)
+    val incomingSmsNotifier = IncomingSmsNotifier(context)
     val forwardIngress = ForwardIngress(
         settingsRepository = settingsRepository,
         dao = database.forwardMessageDao(),

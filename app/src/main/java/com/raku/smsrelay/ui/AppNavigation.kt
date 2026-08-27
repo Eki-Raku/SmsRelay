@@ -6,6 +6,8 @@ import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Outbox
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -25,6 +27,7 @@ enum class AppDestination(val label: String, val icon: ImageVector) {
 @Composable
 fun SmsRelayNavigationBar(
     selected: AppDestination,
+    hasUnreadMessages: Boolean,
     onSelect: (AppDestination) -> Unit,
 ) {
     NavigationBar(
@@ -36,10 +39,16 @@ fun SmsRelayNavigationBar(
                 selected = selected == destination,
                 onClick = { onSelect(destination) },
                 icon = {
-                    Icon(
-                        imageVector = destination.icon,
-                        contentDescription = destination.label,
-                    )
+                    BadgedBox(
+                        badge = {
+                            if (destination == AppDestination.MESSAGES && hasUnreadMessages) Badge()
+                        },
+                    ) {
+                        Icon(
+                            imageVector = destination.icon,
+                            contentDescription = destination.label,
+                        )
+                    }
                 },
                 label = { Text(destination.label) },
                 colors = NavigationBarItemDefaults.colors(

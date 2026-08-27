@@ -100,9 +100,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun openConversation(threadId: Long) {
         mutableSelectedThreadId.value = threadId
         viewModelScope.launch {
-            runCatching { container.systemSmsRepository.messages(threadId) }
-                .onSuccess { mutableThreadMessages.value = it }
+            val result = runCatching {
+                container.systemSmsRepository.markThreadRead(threadId)
+                container.incomingSmsNotifier.dismiss(threadId)
+                container.systemSmsRepository.messages(threadId)
+            }
+            result.onSuccess { mutableThreadMessages.value = it }
                 .onFailure { mutableEvents.emit("无法打开这条短信会话") }
+            if (result.isSuccess) {
+                runCatching { container.systemSmsRepository.conversations() }
+                    .onSuccess { conversations -> mutableConversations.value = conversations }
+            }
         }
     }
 

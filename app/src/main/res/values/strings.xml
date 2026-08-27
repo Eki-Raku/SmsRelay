@@ -1,7 +1,8 @@
 <resources>
     <string name="app_name">短信信使</string>
     <string name="notification_channel_failures">转发失败</string>
+    <string name="notification_channel_incoming_sms">新短信</string>
+    <string name="notification_channel_incoming_sms_description">显示新短信横幅、声音和应用图标角标</string>
     <string name="notification_failure_title">短信转发失败</string>
     <string name="notification_failure_body">有短信未能转发，点此查看原因。</string>
 </resources>
-

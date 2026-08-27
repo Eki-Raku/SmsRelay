@@ -25,6 +25,7 @@ class DefaultSmsRoleUiTest {
         composeRule.setContent {
             SmsRelayNavigationBar(
                 selected = AppDestination.STATUS,
+                hasUnreadMessages = false,
                 onSelect = {},
             )
         }

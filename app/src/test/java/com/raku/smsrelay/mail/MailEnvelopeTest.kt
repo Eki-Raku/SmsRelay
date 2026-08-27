@@ -19,13 +19,13 @@ class MailEnvelopeTest {
 
         val envelope = MailEnvelopeFactory.from(message)
 
-        assertEquals("[短信] 95588 Injected", envelope.subject)
+        assertEquals("[验证码] 95588 Injected · 483921", envelope.subject)
         assertEquals("message-123@smsrelay.local", envelope.messageId)
         assertEquals(1_700_000_000_000L, envelope.receivedAtEpochMs)
-        assertTrue(envelope.body.contains("发送方：95588\r\nInjected"))
-        assertTrue(envelope.body.contains("接收时间：2023-11-14T22:13:20Z"))
-        assertTrue(envelope.body.contains("SIM：SIM 1"))
-        assertTrue(envelope.body.endsWith("验证码 483921\n请勿泄露"))
+        assertTrue(envelope.body.contains("验证码 483921\n请勿泄露"))
+        assertTrue(envelope.body.contains("发送方 | 95588 Injected"))
+        assertTrue(envelope.body.contains("SIM    | SIM 1"))
+        assertTrue(envelope.body.endsWith("================================"))
         assertFalse(envelope.isTest)
     }
 
@@ -41,9 +41,9 @@ class MailEnvelopeTest {
             ),
         )
 
-        assertEquals("[短信测试] 短信信使", envelope.subject)
-        assertTrue(envelope.body.contains("SIM：未知"))
-        assertTrue(envelope.body.contains("类型：链路测试"))
+        assertEquals("[短信测试] 投递链路正常", envelope.subject)
+        assertTrue(envelope.body.contains("SIM    | 未知"))
+        assertTrue(envelope.body.contains("类型   | 链路测试"))
         assertTrue(envelope.isTest)
     }
 
