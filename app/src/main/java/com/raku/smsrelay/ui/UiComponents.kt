@@ -3,6 +3,9 @@ package com.raku.smsrelay.ui
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,12 +18,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,7 +48,7 @@ internal fun BrandHeader(detail: String) {
         Box(
             modifier = Modifier
                 .size(48.dp)
-                .clip(RoundedCornerShape(14.dp))
+                .clip(RoundedCornerShape(15.dp))
                 .background(RelayPalette.Indigo),
             contentAlignment = Alignment.Center,
         ) {
@@ -57,7 +61,7 @@ internal fun BrandHeader(detail: String) {
         }
         Spacer(Modifier.width(13.dp))
         Column(Modifier.weight(1f)) {
-            Text("短信信使", style = MaterialTheme.typography.titleLarge)
+            Text("短信信使", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(2.dp))
             Text(
                 "SMS RELAY",
@@ -81,7 +85,7 @@ internal fun ScreenHeader(eyebrow: String, title: String, detail: String) {
             letterSpacing = 1.1.sp,
         )
         Spacer(Modifier.height(7.dp))
-        Text(title, style = MaterialTheme.typography.headlineMedium)
+        Text(title, style = MaterialTheme.typography.headlineLarge)
         Spacer(Modifier.height(7.dp))
         Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
@@ -94,7 +98,7 @@ internal fun SectionHeading(title: String, detail: String? = null) {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.Bottom,
     ) {
-        Text(title, style = MaterialTheme.typography.titleMedium)
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         detail?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 }
@@ -104,11 +108,13 @@ internal fun HairlineCard(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    Card(
+    Surface(
         modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        color = MaterialTheme.colorScheme.surface,
+        shape = MaterialTheme.shapes.large,
+        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)),
+        shadowElevation = 1.dp,
+        tonalElevation = 0.dp,
         content = { content() },
     )
 }
@@ -131,18 +137,24 @@ internal fun StatusBadge(status: String) {
         ForwardStatus.FAILED -> MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.onErrorContainer
         else -> MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer
     }
+    val animatedBackground by animateColorAsState(background, label = "status badge background")
+    val animatedForeground by animateColorAsState(foreground, label = "status badge foreground")
     Text(
         text = statusLabel(status),
-        modifier = Modifier.background(background, CircleShape).padding(horizontal = 9.dp, vertical = 5.dp),
-        color = foreground,
+        modifier = Modifier.background(animatedBackground, CircleShape).padding(horizontal = 10.dp, vertical = 5.dp),
+        color = animatedForeground,
         style = MaterialTheme.typography.labelSmall,
         fontWeight = FontWeight.SemiBold,
     )
 }
 
 @Composable
-internal fun RelayMessageCard(message: ForwardMessageEntity, retry: ((String) -> Unit)? = null) {
-    HairlineCard(Modifier.fillMaxWidth()) {
+internal fun RelayMessageCard(
+    message: ForwardMessageEntity,
+    retry: ((String) -> Unit)? = null,
+    modifier: Modifier = Modifier,
+) {
+    HairlineCard(modifier.fillMaxWidth().animateContentSize(spring(dampingRatio = 0.86f, stiffness = 420f))) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 15.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -167,7 +179,10 @@ internal fun RelayMessageCard(message: ForwardMessageEntity, retry: ((String) ->
             }
             if (message.status == ForwardStatus.FAILED && retry != null) {
                 Spacer(Modifier.height(10.dp))
-                OutlinedButton(onClick = { retry(message.id) }) { Text("重新发送") }
+                TextButton(
+                    onClick = { retry(message.id) },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.primary),
+                ) { Text("重新发送") }
             }
         }
     }

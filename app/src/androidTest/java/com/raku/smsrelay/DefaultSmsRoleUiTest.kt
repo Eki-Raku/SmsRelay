@@ -1,8 +1,12 @@
 package com.raku.smsrelay
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.unit.dp
 import com.raku.smsrelay.ui.AppDestination
 import com.raku.smsrelay.ui.SmsRelayNavigationBar
 import com.raku.smsrelay.ui.StatusScreen
@@ -33,6 +37,20 @@ class DefaultSmsRoleUiTest {
         listOf("状态", "短信", "转发", "设置").forEach { label ->
             composeRule.onNodeWithText(label).assertIsDisplayed()
         }
+    }
+
+    @Test
+    fun navigationUsesAnAdaptiveFullWidthShell() {
+        composeRule.setContent {
+            SmsRelayNavigationBar(
+                selected = AppDestination.STATUS,
+                hasUnreadMessages = false,
+                onSelect = {},
+            )
+        }
+
+        composeRule.onNodeWithTag("adaptive-navigation-shell")
+            .assertWidthIsAtLeast(300.dp)
     }
 
     @Test
@@ -72,8 +90,8 @@ class DefaultSmsRoleUiTest {
             )
         }
 
-        composeRule.onNodeWithText("发件 QQ 邮箱").assertIsDisplayed()
-        composeRule.onNodeWithText("收件邮箱").assertIsDisplayed()
+        composeRule.onNodeWithText("发件 QQ 邮箱").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("收件邮箱").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("重新查看初始化引导").assertIsDisplayed()
     }
 

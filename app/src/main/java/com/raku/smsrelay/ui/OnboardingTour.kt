@@ -1,5 +1,14 @@
 package com.raku.smsrelay.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -23,9 +32,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -42,6 +51,10 @@ import androidx.compose.ui.unit.dp
 import com.raku.smsrelay.onboarding.MessagingPermissionState
 import com.raku.smsrelay.onboarding.OnboardingStep
 import com.raku.smsrelay.onboarding.OnboardingUiState
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
 
 @Composable
 fun OnboardingTour(
@@ -54,13 +67,30 @@ fun OnboardingTour(
     requestSmsRole: () -> Unit,
     requestSmsPermissions: () -> Unit,
     requestNotificationPermission: () -> Unit,
+    hazeState: HazeState? = null,
 ) {
     if (!state.visible) return
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val target = tourTarget(state.step, maxWidth, maxHeight)
+        val requestedTarget = tourTarget(state.step, maxWidth, maxHeight)
+        val target = requestedTarget.copy(
+            x = animateDpAsState(requestedTarget.x, spring(dampingRatio = 0.86f), label = "tour x").value,
+            y = animateDpAsState(requestedTarget.y, spring(dampingRatio = 0.86f), label = "tour y").value,
+            width = animateDpAsState(requestedTarget.width, spring(dampingRatio = 0.86f), label = "tour width").value,
+            height = animateDpAsState(requestedTarget.height, spring(dampingRatio = 0.86f), label = "tour height").value,
+            cardTop = animateDpAsState(requestedTarget.cardTop, spring(dampingRatio = 0.86f), label = "tour card").value,
+        )
         val density = LocalDensity.current
         val interactionSource = remember { MutableInteractionSource() }
+
+        if (hazeState != null) {
+            TourBackdropBlur(
+                hazeState = hazeState,
+                target = target,
+                maxWidth = maxWidth,
+                maxHeight = maxHeight,
+            )
+        }
 
         Canvas(
             Modifier
@@ -110,6 +140,43 @@ fun OnboardingTour(
 }
 
 @Composable
+private fun TourBackdropBlur(
+    hazeState: HazeState,
+    target: TourTarget,
+    maxWidth: Dp,
+    maxHeight: Dp,
+) {
+    val style = HazeStyle(
+        backgroundColor = MaterialTheme.colorScheme.background,
+        tints = listOf(HazeTint(Color.Black.copy(alpha = 0.04f))),
+        blurRadius = 18.dp,
+        noiseFactor = 0.03f,
+    )
+    val rightWidth = (maxWidth - target.x - target.width).coerceAtLeast(0.dp)
+    val bottomHeight = (maxHeight - target.y - target.height).coerceAtLeast(0.dp)
+
+    Box(Modifier.size(maxWidth, target.y).hazeEffect(hazeState, style))
+    Box(
+        Modifier
+            .offset(y = target.y)
+            .size(target.x, target.height)
+            .hazeEffect(hazeState, style),
+    )
+    Box(
+        Modifier
+            .offset(x = target.x + target.width, y = target.y)
+            .size(rightWidth, target.height)
+            .hazeEffect(hazeState, style),
+    )
+    Box(
+        Modifier
+            .offset(y = target.y + target.height)
+            .size(maxWidth, bottomHeight)
+            .hazeEffect(hazeState, style),
+    )
+}
+
+@Composable
 private fun TourCard(
     state: OnboardingUiState,
     hasSmsRole: Boolean,
@@ -146,11 +213,11 @@ private fun TourCard(
         Surface(
             color = MaterialTheme.colorScheme.surface,
             contentColor = MaterialTheme.colorScheme.onSurface,
-            shape = RoundedCornerShape(14.dp),
-            shadowElevation = 12.dp,
+            shape = RoundedCornerShape(24.dp),
+            shadowElevation = 18.dp,
             tonalElevation = 0.dp,
         ) {
-            Column(Modifier.padding(18.dp)) {
+            Column(Modifier.padding(18.dp).animateContentSize(spring(dampingRatio = 0.88f))) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         "${state.stepNumber} / ${state.stepCount}",
@@ -167,13 +234,24 @@ private fun TourCard(
                     )
                 }
                 Spacer(Modifier.height(8.dp))
-                Text(copy.title, style = MaterialTheme.typography.titleLarge)
-                Spacer(Modifier.height(7.dp))
-                Text(
-                    copy.body,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                AnimatedContent(
+                    targetState = copy,
+                    transitionSpec = {
+                        (fadeIn() + scaleIn(initialScale = 0.98f)) togetherWith
+                            (fadeOut() + scaleOut(targetScale = 0.98f))
+                    },
+                    label = "tour copy",
+                ) { currentCopy ->
+                    Column {
+                        Text(currentCopy.title, style = MaterialTheme.typography.titleLarge)
+                        Spacer(Modifier.height(7.dp))
+                        Text(
+                            currentCopy.body,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
                 copy.status?.let {
                     Spacer(Modifier.height(12.dp))
                     Text(
@@ -192,11 +270,15 @@ private fun TourCard(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         if (state.step != OnboardingStep.WELCOME) {
-                            OutlinedButton(onClick = previous, modifier = Modifier.weight(1f)) {
+                            TextButton(onClick = previous, modifier = Modifier.weight(1f)) {
                                 Text("上一步", maxLines = 1, overflow = TextOverflow.Clip)
                             }
                         }
-                        Button(onClick = primaryAction, modifier = Modifier.weight(1f)) {
+                        Button(
+                            onClick = primaryAction,
+                            modifier = Modifier.weight(1f),
+                            shape = MaterialTheme.shapes.extraLarge,
+                        ) {
                             Text(copy.primaryLabel, maxLines = 1, overflow = TextOverflow.Clip)
                         }
                     }
@@ -222,9 +304,11 @@ private fun TourCard(
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (state.step != OnboardingStep.WELCOME) {
-                            OutlinedButton(onClick = previous) { Text("上一步", maxLines = 1) }
+                            TextButton(onClick = previous) { Text("上一步", maxLines = 1) }
                         }
-                        Button(onClick = primaryAction) { Text(copy.primaryLabel, maxLines = 1) }
+                        Button(onClick = primaryAction, shape = MaterialTheme.shapes.extraLarge) {
+                            Text(copy.primaryLabel, maxLines = 1)
+                        }
                     }
                 }
                 }
@@ -287,11 +371,11 @@ private data class TourTarget(
 )
 
 private fun tourTarget(step: OnboardingStep, maxWidth: Dp, maxHeight: Dp): TourTarget = when (step) {
-    OnboardingStep.WELCOME -> TourTarget(18.dp, 62.dp, maxWidth - 36.dp, 88.dp, 170.dp)
+    OnboardingStep.WELCOME -> TourTarget(18.dp, 70.dp, maxWidth - 36.dp, 52.dp, 148.dp)
     OnboardingStep.DEFAULT_SMS,
     OnboardingStep.SMS_PERMISSIONS,
     OnboardingStep.NOTIFICATIONS,
-    -> TourTarget(18.dp, 107.dp, maxWidth - 36.dp, 142.dp, 270.dp)
+    -> TourTarget(18.dp, 134.dp, maxWidth - 36.dp, 146.dp, 300.dp)
     OnboardingStep.SETTINGS -> TourTarget(
         x = maxWidth * 0.76f,
         y = maxHeight - 104.dp,

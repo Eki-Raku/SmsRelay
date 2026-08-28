@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.viewModels
@@ -30,6 +31,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         smsPermissionLauncher = registerForActivityResult(
             ActivityResultContracts.RequestMultiplePermissions(),
         ) {

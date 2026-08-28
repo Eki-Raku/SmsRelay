@@ -16,90 +16,108 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 internal object RelayPalette {
-    val Indigo = Color(0xFF1B1938)
-    val IndigoDeep = Color(0xFF0E0C1F)
-    val Violet = Color(0xFFC9B4FA)
-    val VioletSoft = Color(0xFFE9E1FC)
-    val Teal = Color(0xFF155555)
-    val TealDeep = Color(0xFF0E3030)
-    val WarmWhite = Color(0xFFFAFAF8)
+    val Blue = Color(0xFF0A84FF)
+    val BlueSoft = Color(0xFFE5F2FF)
+    val Indigo = Color(0xFF17152F)
+    val IndigoDeep = Color(0xFF090816)
+    val Violet = Color(0xFFC7B6FF)
+    val VioletSoft = Color(0xFFEEE9FF)
+    val Teal = Color(0xFF2A9D8F)
+    val Green = Color(0xFF30A46C)
+    val Amber = Color(0xFFFFB340)
+    val Error = Color(0xFFFF453A)
+
+    val GroupedBackground = Color(0xFFF2F2F7)
     val Paper = Color(0xFFFFFFFF)
-    val Ink = Color(0xFF292827)
-    val InkMuted = Color(0xFF73706D)
-    val InkFaint = Color(0xFF9A9794)
-    val Hairline = Color(0xFFE8E4DD)
-    val DarkHairline = Color(0xFF3F3A52)
-    val Amber = Color(0xFF9A6812)
-    val Error = Color(0xFFB3261E)
+    val Ink = Color(0xFF1C1C1E)
+    val InkMuted = Color(0xFF6E6E73)
+    val InkFaint = Color(0xFFAEAEB2)
+    val Hairline = Color(0xFFD1D1D6)
+
+    val DarkBackground = Color(0xFF000000)
+    val DarkSurface = Color(0xFF1C1C1E)
+    val DarkRaised = Color(0xFF2C2C2E)
+    val DarkHairline = Color(0xFF38383A)
 }
 
 private val LightColors = lightColorScheme(
-    primary = RelayPalette.Indigo,
+    primary = RelayPalette.Blue,
     onPrimary = Color.White,
-    primaryContainer = RelayPalette.VioletSoft,
-    onPrimaryContainer = RelayPalette.Indigo,
+    primaryContainer = RelayPalette.BlueSoft,
+    onPrimaryContainer = Color(0xFF004A80),
     secondary = RelayPalette.Teal,
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFD9E9E6),
-    onSecondaryContainer = RelayPalette.TealDeep,
+    secondaryContainer = Color(0xFFDDF5F1),
+    onSecondaryContainer = Color(0xFF075E55),
     tertiary = RelayPalette.Amber,
-    background = RelayPalette.WarmWhite,
+    background = RelayPalette.GroupedBackground,
     onBackground = RelayPalette.Ink,
     surface = RelayPalette.Paper,
     onSurface = RelayPalette.Ink,
-    surfaceVariant = Color(0xFFF3F1ED),
+    surfaceVariant = Color(0xFFE9E9EE),
     onSurfaceVariant = RelayPalette.InkMuted,
-    error = RelayPalette.Error,
+    error = Color(0xFFD70015),
+    errorContainer = Color(0xFFFFE5E5),
+    onErrorContainer = Color(0xFF8A000C),
     outline = RelayPalette.Hairline,
-    outlineVariant = Color(0xFFF0EDE8),
+    outlineVariant = Color(0xFFE5E5EA),
 )
 
 private val DarkColors = darkColorScheme(
-    primary = RelayPalette.Violet,
-    onPrimary = RelayPalette.Indigo,
-    primaryContainer = Color(0xFF332D5A),
-    onPrimaryContainer = Color(0xFFF0EAFE),
-    secondary = Color(0xFF9CC8C3),
-    onSecondary = RelayPalette.TealDeep,
-    secondaryContainer = RelayPalette.TealDeep,
-    onSecondaryContainer = Color(0xFFD8F2EE),
-    tertiary = Color(0xFFE8BD69),
-    background = RelayPalette.IndigoDeep,
-    onBackground = Color(0xFFF4F1EE),
-    surface = RelayPalette.Indigo,
-    onSurface = Color(0xFFF4F1EE),
-    surfaceVariant = Color(0xFF26233E),
-    onSurfaceVariant = Color(0xFFBCBAC9),
-    error = Color(0xFFFFB4AB),
+    primary = RelayPalette.Blue,
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFF003E69),
+    onPrimaryContainer = Color(0xFFB8DCFF),
+    secondary = Color(0xFF62D6C7),
+    onSecondary = Color(0xFF003731),
+    secondaryContainer = Color(0xFF123D39),
+    onSecondaryContainer = Color(0xFFA7F3EA),
+    tertiary = RelayPalette.Amber,
+    background = RelayPalette.DarkBackground,
+    onBackground = Color(0xFFF2F2F7),
+    surface = RelayPalette.DarkSurface,
+    onSurface = Color(0xFFF2F2F7),
+    surfaceVariant = RelayPalette.DarkRaised,
+    onSurfaceVariant = Color(0xFFAEAEB2),
+    error = Color(0xFFFF6961),
+    errorContainer = Color(0xFF5B1114),
+    onErrorContainer = Color(0xFFFFDAD8),
     outline = RelayPalette.DarkHairline,
-    outlineVariant = Color(0xFF2C2943),
+    outlineVariant = Color(0xFF2C2C2E),
 )
 
 private val RelayTypography = Typography(
+    headlineLarge = TextStyle(
+        fontFamily = FontFamily.SansSerif,
+        fontWeight = FontWeight.Bold,
+        fontSize = 34.sp,
+        lineHeight = 40.sp,
+        letterSpacing = (-0.8).sp,
+    ),
     headlineMedium = TextStyle(
         fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.Medium,
-        fontSize = 29.sp,
-        lineHeight = 33.sp,
-        letterSpacing = (-0.7).sp,
+        fontWeight = FontWeight.Bold,
+        fontSize = 30.sp,
+        lineHeight = 36.sp,
+        letterSpacing = (-0.6).sp,
     ),
     headlineSmall = TextStyle(
         fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.Medium,
-        fontSize = 23.sp,
-        lineHeight = 27.sp,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 24.sp,
+        lineHeight = 29.sp,
         letterSpacing = (-0.35).sp,
     ),
     titleLarge = TextStyle(
         fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.Medium,
-        fontSize = 20.sp,
-        lineHeight = 25.sp,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 21.sp,
+        lineHeight = 26.sp,
         letterSpacing = (-0.25).sp,
     ),
     titleMedium = TextStyle(
         fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.Medium,
+        fontWeight = FontWeight.SemiBold,
         fontSize = 17.sp,
         lineHeight = 22.sp,
     ),
@@ -112,18 +130,21 @@ private val RelayTypography = Typography(
     bodyLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontSize = 17.sp, lineHeight = 25.sp),
     bodyMedium = TextStyle(fontFamily = FontFamily.SansSerif, fontSize = 15.sp, lineHeight = 22.sp),
     bodySmall = TextStyle(fontFamily = FontFamily.SansSerif, fontSize = 13.sp, lineHeight = 19.sp),
-    labelLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, fontSize = 14.sp),
+    labelLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, fontSize = 15.sp),
     labelMedium = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Medium, fontSize = 12.sp),
     labelSmall = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Medium, fontSize = 11.sp),
 )
 
 private val RelayShapes = Shapes(
-    extraSmall = RoundedCornerShape(6.dp),
-    small = RoundedCornerShape(8.dp),
-    medium = RoundedCornerShape(12.dp),
-    large = RoundedCornerShape(20.dp),
-    extraLarge = RoundedCornerShape(28.dp),
+    extraSmall = RoundedCornerShape(8.dp),
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(16.dp),
+    large = RoundedCornerShape(22.dp),
+    extraLarge = RoundedCornerShape(30.dp),
 )
+
+internal const val MotionDurationShort = 180
+internal const val MotionDurationMedium = 320
 
 @Composable
 fun SmsRelayTheme(content: @Composable () -> Unit) {

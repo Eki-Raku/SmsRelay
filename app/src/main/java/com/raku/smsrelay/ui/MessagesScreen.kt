@@ -2,6 +2,15 @@ package com.raku.smsrelay.ui
 
 import android.provider.Telephony
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -24,7 +33,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBackIosNew
+import androidx.compose.material.icons.automirrored.outlined.ArrowBackIos
 import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Edit
@@ -84,10 +93,36 @@ fun MessagesScreen(
         return
     }
 
-    if (selectedThreadId == null) {
-        ConversationList(conversations, composeRecipient, openConversation, sendSms, contentPadding)
-    } else {
-        ConversationDetail(messages, composeRecipient, closeConversation, sendSms, contentPadding)
+    AnimatedContent(
+        targetState = selectedThreadId,
+        transitionSpec = {
+            if (targetState != null) {
+                (slideIntoContainer(
+                    AnimatedContentTransitionScope.SlideDirection.Left,
+                    tween(MotionDurationMedium, easing = FastOutSlowInEasing),
+                ) + fadeIn(tween(MotionDurationShort))) togetherWith
+                    (slideOutOfContainer(
+                        AnimatedContentTransitionScope.SlideDirection.Left,
+                        tween(MotionDurationMedium, easing = FastOutSlowInEasing),
+                    ) + fadeOut(tween(MotionDurationShort)))
+            } else {
+                (slideIntoContainer(
+                    AnimatedContentTransitionScope.SlideDirection.Right,
+                    tween(MotionDurationMedium, easing = FastOutSlowInEasing),
+                ) + fadeIn(tween(MotionDurationShort))) togetherWith
+                    (slideOutOfContainer(
+                        AnimatedContentTransitionScope.SlideDirection.Right,
+                        tween(MotionDurationMedium, easing = FastOutSlowInEasing),
+                    ) + fadeOut(tween(MotionDurationShort)))
+            }
+        },
+        label = "message conversation",
+    ) { threadId ->
+        if (threadId == null) {
+            ConversationList(conversations, composeRecipient, openConversation, sendSms, contentPadding)
+        } else {
+            ConversationDetail(messages, composeRecipient, closeConversation, sendSms, contentPadding)
+        }
     }
 }
 
@@ -217,7 +252,7 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
         placeholder = { Text("搜索") },
         leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
         singleLine = true,
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = TextFieldDefaults.colors(
             focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
             unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -358,7 +393,7 @@ private fun ConversationDetail(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = closeConversation) {
-                Icon(Icons.AutoMirrored.Outlined.ArrowBackIosNew, contentDescription = "返回", tint = MessageBlue)
+                Icon(Icons.AutoMirrored.Outlined.ArrowBackIos, contentDescription = "返回", tint = MessageBlue)
             }
             Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                 SenderAvatar(displaySender, size = 38)
@@ -449,7 +484,9 @@ private fun MessageBubble(message: SystemSmsMessage) {
         horizontalAlignment = if (outgoing) Alignment.End else Alignment.Start,
     ) {
         Surface(
-            modifier = Modifier.widthIn(max = 310.dp),
+            modifier = Modifier.widthIn(max = 310.dp).animateContentSize(
+                spring(dampingRatio = 0.86f, stiffness = 480f),
+            ),
             color = if (outgoing) MessageBlue else MaterialTheme.colorScheme.surfaceVariant,
             contentColor = if (outgoing) Color.White else MaterialTheme.colorScheme.onSurface,
             shape = RoundedCornerShape(
