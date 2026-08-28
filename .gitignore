@@ -1,6 +1,8 @@
 # Android Studio / Gradle
 .gradle/
-.idea/
+.idea/*
+!.idea/runConfigurations/
+!.idea/runConfigurations/SmsRelay_App.xml
 .workbuddy/
 **/build/
 captures/
