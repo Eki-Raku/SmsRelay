@@ -1,16 +1,18 @@
+@file:OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
+
 package com.raku.smsrelay.ui
 
 import android.provider.Telephony
-import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -24,18 +26,20 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBackIos
-import androidx.compose.material.icons.outlined.ArrowUpward
-import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Button
@@ -44,16 +48,18 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -69,9 +75,6 @@ import com.raku.smsrelay.sms.SmsConversation
 import com.raku.smsrelay.sms.SmsPresentationFactory
 import com.raku.smsrelay.sms.SystemSmsMessage
 
-private val MessageBlue = Color(0xFF0A84FF)
-private val MessageBlueSoft = Color(0xFFE8F3FF)
-
 @Composable
 fun MessagesScreen(
     conversations: List<SmsConversation>,
@@ -85,44 +88,42 @@ fun MessagesScreen(
     openConversation: (Long) -> Unit,
     closeConversation: () -> Unit,
     sendSms: (String, String) -> Unit,
+    onComposerVisibilityChanged: (Boolean) -> Unit = {},
     contentPadding: PaddingValues = PaddingValues(),
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
+    DisposableEffect(Unit) {
+        onDispose { onComposerVisibilityChanged(false) }
+    }
     val blockReason = smsInboxBlockReason(hasSmsRole, permissions)
     if (blockReason != null) {
         PermissionRequired(blockReason, requestSmsRole, requestSmsPermissions, contentPadding)
         return
     }
 
-    AnimatedContent(
-        targetState = selectedThreadId,
-        transitionSpec = {
-            if (targetState != null) {
-                (slideIntoContainer(
-                    AnimatedContentTransitionScope.SlideDirection.Left,
-                    tween(MotionDurationMedium, easing = FastOutSlowInEasing),
-                ) + fadeIn(tween(MotionDurationShort))) togetherWith
-                    (slideOutOfContainer(
-                        AnimatedContentTransitionScope.SlideDirection.Left,
-                        tween(MotionDurationMedium, easing = FastOutSlowInEasing),
-                    ) + fadeOut(tween(MotionDurationShort)))
-            } else {
-                (slideIntoContainer(
-                    AnimatedContentTransitionScope.SlideDirection.Right,
-                    tween(MotionDurationMedium, easing = FastOutSlowInEasing),
-                ) + fadeIn(tween(MotionDurationShort))) togetherWith
-                    (slideOutOfContainer(
-                        AnimatedContentTransitionScope.SlideDirection.Right,
-                        tween(MotionDurationMedium, easing = FastOutSlowInEasing),
-                    ) + fadeOut(tween(MotionDurationShort)))
-            }
-        },
-        label = "message conversation",
-    ) { threadId ->
-        if (threadId == null) {
-            ConversationList(conversations, composeRecipient, openConversation, sendSms, contentPadding)
-        } else {
-            ConversationDetail(messages, composeRecipient, closeConversation, sendSms, contentPadding)
-        }
+    if (selectedThreadId == null) {
+        ConversationList(
+            conversations,
+            composeRecipient,
+            openConversation,
+            sendSms,
+            onComposerVisibilityChanged,
+            contentPadding,
+            sharedTransitionScope,
+            animatedVisibilityScope,
+        )
+    } else {
+        ConversationDetail(
+            messages,
+            composeRecipient,
+            closeConversation,
+            sendSms,
+            contentPadding,
+            selectedThreadId,
+            sharedTransitionScope,
+            animatedVisibilityScope,
+        )
     }
 }
 
@@ -164,10 +165,13 @@ private fun ConversationList(
     initialRecipient: String,
     openConversation: (Long) -> Unit,
     sendSms: (String, String) -> Unit,
+    onComposerVisibilityChanged: (Boolean) -> Unit,
     contentPadding: PaddingValues,
+    sharedTransitionScope: SharedTransitionScope?,
+    animatedVisibilityScope: AnimatedVisibilityScope?,
 ) {
-    var query by remember { mutableStateOf("") }
-    var showComposer by remember { mutableStateOf(initialRecipient.isNotBlank()) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var showComposer by rememberSaveable { mutableStateOf(initialRecipient.isNotBlank()) }
     val filtered = remember(conversations, query) {
         val keyword = query.trim()
         if (keyword.isEmpty()) conversations else conversations.filter { conversation ->
@@ -181,41 +185,107 @@ private fun ConversationList(
     LaunchedEffect(initialRecipient) {
         if (initialRecipient.isNotBlank()) showComposer = true
     }
+    LaunchedEffect(showComposer) {
+        onComposerVisibilityChanged(showComposer)
+    }
+    val listState = rememberLazyListState()
+    val collapsedTitle by remember {
+        derivedStateOf {
+            listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 52
+        }
+    }
 
-    Column(
+    Box(
         modifier = Modifier.fillMaxSize().padding(
             top = contentPadding.calculateTopPadding(),
             bottom = contentPadding.calculateBottomPadding(),
         ),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 20.dp, top = 18.dp, end = 14.dp, bottom = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            state = listState,
+            contentPadding = PaddingValues(bottom = 16.dp),
         ) {
-            MessagesTitle(Modifier.weight(1f))
-            IconButton(onClick = { showComposer = true }) {
-                Icon(Icons.Outlined.Edit, contentDescription = "新建短信", tint = MessageBlue)
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            start = RelaySpacing.lg,
+                            top = RelaySpacing.lg,
+                            end = RelaySpacing.md,
+                            bottom = RelaySpacing.sm,
+                        ),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    MessagesTitle(Modifier.weight(1f))
+                    IconButton(onClick = { showComposer = true }) {
+                        Icon(
+                            Icons.Outlined.Edit,
+                            contentDescription = "新建短信",
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
             }
-        }
-        SearchField(query = query, onQueryChange = { query = it })
-
-        if (filtered.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                Text(
-                    text = if (query.isBlank()) "还没有短信\n收到或发送第一条短信后，会话会出现在这里。" else "没有匹配的短信",
-                    textAlign = TextAlign.Center,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-        } else {
-            LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
+            item { SearchField(query = query, onQueryChange = { query = it }) }
+            if (filtered.isEmpty()) {
+                item {
+                    Box(
+                        Modifier.fillMaxWidth().height(360.dp).padding(24.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = if (query.isBlank()) {
+                                "还没有短信\n收到或发送第一条短信后，会话会出现在这里。"
+                            } else {
+                                "没有匹配的短信"
+                            },
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
+            } else {
                 items(filtered, key = { it.threadId }) { conversation ->
-                    ConversationRow(conversation, onClick = { openConversation(conversation.threadId) })
+                    ConversationRow(
+                        conversation,
+                        onClick = { openConversation(conversation.threadId) },
+                        modifier = Modifier.animateItem(),
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = animatedVisibilityScope,
+                    )
                     HorizontalDivider(
                         modifier = Modifier.padding(start = 84.dp),
                         color = MaterialTheme.colorScheme.outlineVariant,
                     )
+                }
+            }
+        }
+        AnimatedVisibility(
+            visible = collapsedTitle,
+            enter = fadeIn(tween(RelayTheme.motion.duration(140))),
+            exit = fadeOut(tween(RelayTheme.motion.duration(120))),
+            modifier = Modifier.align(Alignment.TopCenter),
+        ) {
+            Surface(
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f),
+                shadowElevation = 4.dp,
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().height(52.dp).padding(start = 20.dp, end = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "信息",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    IconButton(onClick = { showComposer = true }) {
+                        Icon(Icons.Outlined.Edit, contentDescription = "新建短信")
+                    }
                 }
             }
         }
@@ -238,8 +308,8 @@ private fun MessagesTitle(modifier: Modifier = Modifier) {
     Text(
         "信息",
         modifier = modifier,
-        style = MaterialTheme.typography.headlineMedium,
-        fontWeight = FontWeight.Bold,
+        style = MaterialTheme.typography.headlineLarge,
+        fontWeight = FontWeight.SemiBold,
     )
 }
 
@@ -248,11 +318,11 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
     TextField(
         value = query,
         onValueChange = onQueryChange,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = RelaySpacing.md, vertical = RelaySpacing.xs),
         placeholder = { Text("搜索") },
         leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
         singleLine = true,
-        shape = RoundedCornerShape(16.dp),
+        shape = MaterialTheme.shapes.medium,
         colors = TextFieldDefaults.colors(
             focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
             unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -263,23 +333,42 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
 }
 
 @Composable
-private fun ConversationRow(conversation: SmsConversation, onClick: () -> Unit) {
+private fun ConversationRow(
+    conversation: SmsConversation,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
+) {
     val presentation = SmsPresentationFactory.from(conversation.address, conversation.snippet)
+    val avatarModifier = Modifier.sharedSenderElement(
+        key = "sender-avatar-${conversation.threadId}",
+        sharedTransitionScope = sharedTransitionScope,
+        animatedVisibilityScope = animatedVisibilityScope,
+    )
+    val titleModifier = Modifier.sharedSenderElement(
+        key = "sender-title-${conversation.threadId}",
+        sharedTransitionScope = sharedTransitionScope,
+        animatedVisibilityScope = animatedVisibilityScope,
+    )
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .relayClickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        SenderAvatar(presentation.displaySender)
+        SenderAvatar(presentation.displaySender, modifier = avatarModifier)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (conversation.unread) {
-                    Box(Modifier.size(9.dp).background(MessageBlue, CircleShape))
-                    Spacer(Modifier.width(7.dp))
+                    Box(Modifier.size(9.dp).background(MaterialTheme.colorScheme.primary, CircleShape))
+                    Spacer(Modifier.width(RelaySpacing.xs))
                 }
                 Text(
                     presentation.displaySender,
-                    modifier = Modifier.weight(1f),
+                    modifier = titleModifier.weight(1f),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = if (conversation.unread) FontWeight.Bold else FontWeight.SemiBold,
                     maxLines = 1,
@@ -291,7 +380,7 @@ private fun ConversationRow(conversation: SmsConversation, onClick: () -> Unit) 
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Icon(
-                    Icons.Outlined.ChevronRight,
+                    Icons.AutoMirrored.Outlined.KeyboardArrowRight,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(18.dp),
@@ -310,14 +399,14 @@ private fun ConversationRow(conversation: SmsConversation, onClick: () -> Unit) 
 }
 
 @Composable
-private fun SenderAvatar(sender: String, size: Int = 52) {
+private fun SenderAvatar(sender: String, modifier: Modifier = Modifier, size: Int = 52) {
     Box(
-        modifier = Modifier.size(size.dp).background(MessageBlueSoft, CircleShape),
+        modifier = modifier.size(size.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             sender.trim().take(1).ifBlank { "?" },
-            color = MessageBlue,
+            color = MaterialTheme.colorScheme.primary,
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.SemiBold,
         )
@@ -331,9 +420,11 @@ private fun ComposeMessageSheet(
     dismiss: () -> Unit,
     sendSms: (String, String) -> Unit,
 ) {
-    var recipient by remember(initialRecipient) { mutableStateOf(initialRecipient) }
-    var body by remember { mutableStateOf("") }
-    ModalBottomSheet(onDismissRequest = dismiss) {
+    var recipient by rememberSaveable(initialRecipient) { mutableStateOf(initialRecipient) }
+    var body by rememberSaveable { mutableStateOf("") }
+    RelaySheet(
+        onDismissRequest = dismiss,
+    ) {
         Column(
             modifier = Modifier.fillMaxWidth().imePadding().padding(horizontal = 16.dp).padding(bottom = 24.dp),
         ) {
@@ -344,9 +435,13 @@ private fun ComposeMessageSheet(
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                 )
-                Text("取消", modifier = Modifier.clickable(onClick = dismiss).padding(8.dp), color = MessageBlue)
+                Text(
+                    "取消",
+                    modifier = Modifier.relayClickable(onClick = dismiss).padding(8.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                )
             }
-            HorizontalDivider(Modifier.padding(top = 10.dp))
+            HorizontalDivider(Modifier.padding(top = RelaySpacing.sm))
             TextField(
                 value = recipient,
                 onValueChange = { recipient = it },
@@ -374,31 +469,47 @@ private fun ConversationDetail(
     closeConversation: () -> Unit,
     sendSms: (String, String) -> Unit,
     contentPadding: PaddingValues,
+    threadId: Long,
+    sharedTransitionScope: SharedTransitionScope?,
+    animatedVisibilityScope: AnimatedVisibilityScope?,
 ) {
     val recipient = messages.firstOrNull()?.address.orEmpty().ifBlank { fallbackRecipient }
     val displaySender = messages.lastOrNull { it.type == Telephony.Sms.MESSAGE_TYPE_INBOX }?.let {
         SmsPresentationFactory.from(it.address, it.body).displaySender
     } ?: recipient.ifBlank { "短信会话" }
-    var body by remember { mutableStateOf("") }
-    BackHandler(onBack = closeConversation)
-
+    var body by rememberSaveable(threadId) { mutableStateOf("") }
+    val avatarModifier = Modifier.sharedSenderElement(
+        key = "sender-avatar-$threadId",
+        sharedTransitionScope = sharedTransitionScope,
+        animatedVisibilityScope = animatedVisibilityScope,
+    )
+    val titleModifier = Modifier.sharedSenderElement(
+        key = "sender-title-$threadId",
+        sharedTransitionScope = sharedTransitionScope,
+        animatedVisibilityScope = animatedVisibilityScope,
+    )
     Column(
         modifier = Modifier.fillMaxSize().padding(
             top = contentPadding.calculateTopPadding(),
             bottom = contentPadding.calculateBottomPadding(),
-        ).imePadding(),
+        ).navigationBarsPadding().imePadding(),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = closeConversation) {
-                Icon(Icons.AutoMirrored.Outlined.ArrowBackIos, contentDescription = "返回", tint = MessageBlue)
+                Icon(
+                    Icons.AutoMirrored.Outlined.ArrowBack,
+                    contentDescription = "返回",
+                    tint = MaterialTheme.colorScheme.primary,
+                )
             }
             Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                SenderAvatar(displaySender, size = 38)
+                SenderAvatar(displaySender, modifier = avatarModifier, size = 38)
                 Text(
                     displaySender,
+                    modifier = titleModifier,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
@@ -413,7 +524,7 @@ private fun ConversationDetail(
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(7.dp),
         ) {
-            items(messages, key = { it.id }) { MessageBubble(it) }
+            items(messages, key = { it.id }) { MessageBubble(it, Modifier.animateItem()) }
         }
         MessageComposer(
             body = body,
@@ -423,7 +534,24 @@ private fun ConversationDetail(
                 sendSms(recipient, body)
                 body = ""
             },
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = RelaySpacing.sm, vertical = RelaySpacing.xs),
+        )
+    }
+}
+
+@OptIn(ExperimentalSharedTransitionApi::class)
+@Composable
+private fun Modifier.sharedSenderElement(
+    key: String,
+    sharedTransitionScope: SharedTransitionScope?,
+    animatedVisibilityScope: AnimatedVisibilityScope?,
+): Modifier {
+    val scope = sharedTransitionScope ?: return this
+    val visibilityScope = animatedVisibilityScope ?: return this
+    return with(scope) {
+        this@sharedSenderElement.sharedElement(
+            sharedContentState = rememberSharedContentState(key),
+            animatedVisibilityScope = visibilityScope,
         )
     }
 }
@@ -438,11 +566,14 @@ private fun MessageComposer(
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
+        shape = MaterialTheme.shapes.medium,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
         color = MaterialTheme.colorScheme.surface,
     ) {
-        Row(modifier = Modifier.padding(start = 6.dp, end = 4.dp), verticalAlignment = Alignment.Bottom) {
+        Row(
+            modifier = Modifier.padding(start = RelaySpacing.xs, end = RelaySpacing.xxs),
+            verticalAlignment = Alignment.Bottom,
+        ) {
             TextField(
                 value = body,
                 onValueChange = onBodyChange,
@@ -454,15 +585,15 @@ private fun MessageComposer(
             IconButton(onClick = send, enabled = enabled) {
                 Box(
                     modifier = Modifier.size(32.dp).background(
-                        if (enabled) MessageBlue else MaterialTheme.colorScheme.outline,
+                        if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
                         CircleShape,
                     ),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
-                        Icons.Outlined.ArrowUpward,
+                        Icons.AutoMirrored.Outlined.Send,
                         contentDescription = "发送",
-                        tint = Color.White,
+                        tint = MaterialTheme.colorScheme.onPrimary,
                         modifier = Modifier.size(20.dp),
                     )
                 }
@@ -472,7 +603,7 @@ private fun MessageComposer(
 }
 
 @Composable
-private fun MessageBubble(message: SystemSmsMessage) {
+private fun MessageBubble(message: SystemSmsMessage, modifier: Modifier = Modifier) {
     val outgoing = message.type in setOf(
         Telephony.Sms.MESSAGE_TYPE_SENT,
         Telephony.Sms.MESSAGE_TYPE_OUTBOX,
@@ -480,15 +611,17 @@ private fun MessageBubble(message: SystemSmsMessage) {
         Telephony.Sms.MESSAGE_TYPE_QUEUED,
     )
     Column(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         horizontalAlignment = if (outgoing) Alignment.End else Alignment.Start,
     ) {
         Surface(
             modifier = Modifier.widthIn(max = 310.dp).animateContentSize(
-                spring(dampingRatio = 0.86f, stiffness = 480f),
+                if (RelayTheme.motion.reducedMotion) snap() else {
+                    spring(dampingRatio = 0.86f, stiffness = 480f)
+                },
             ),
-            color = if (outgoing) MessageBlue else MaterialTheme.colorScheme.surfaceVariant,
-            contentColor = if (outgoing) Color.White else MaterialTheme.colorScheme.onSurface,
+            color = if (outgoing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+            contentColor = if (outgoing) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
             shape = RoundedCornerShape(
                 topStart = 18.dp,
                 topEnd = 18.dp,
@@ -496,7 +629,7 @@ private fun MessageBubble(message: SystemSmsMessage) {
                 bottomEnd = if (outgoing) 5.dp else 18.dp,
             ),
         ) {
-            Text(message.body, modifier = Modifier.padding(horizontal = 13.dp, vertical = 9.dp))
+            Text(message.body, modifier = Modifier.padding(horizontal = RelaySpacing.sm, vertical = RelaySpacing.xs))
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (message.type == Telephony.Sms.MESSAGE_TYPE_FAILED) {
@@ -504,7 +637,7 @@ private fun MessageBubble(message: SystemSmsMessage) {
             }
             Text(
                 formatTime(message.dateEpochMs),
-                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                modifier = Modifier.padding(horizontal = RelaySpacing.xxs, vertical = 2.dp),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

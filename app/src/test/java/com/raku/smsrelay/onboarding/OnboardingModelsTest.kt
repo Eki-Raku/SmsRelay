@@ -77,4 +77,19 @@ class OnboardingModelsTest {
             smsReadFailureMessage(IllegalArgumentException("unknown column")),
         )
     }
+
+    @Test
+    fun permissionStepsOnlyCompleteAfterTheSystemCapabilityIsActuallyGranted() {
+        val denied = MessagingPermissionState.allGranted().copy(
+            canReadSms = false,
+            canPostNotifications = false,
+        )
+
+        assertFalse(OnboardingStep.DEFAULT_SMS.isSatisfiedBy(roleHeld = false, denied))
+        assertFalse(OnboardingStep.SMS_PERMISSIONS.isSatisfiedBy(roleHeld = true, denied))
+        assertFalse(OnboardingStep.NOTIFICATIONS.isSatisfiedBy(roleHeld = true, denied))
+        assertTrue(OnboardingStep.DEFAULT_SMS.isSatisfiedBy(roleHeld = true, MessagingPermissionState.allGranted()))
+        assertTrue(OnboardingStep.SMS_PERMISSIONS.isSatisfiedBy(roleHeld = true, MessagingPermissionState.allGranted()))
+        assertTrue(OnboardingStep.NOTIFICATIONS.isSatisfiedBy(roleHeld = true, MessagingPermissionState.allGranted()))
+    }
 }

@@ -5,6 +5,8 @@ import android.os.Build
 import android.os.Bundle
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -17,6 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import com.raku.smsrelay.onboarding.MessagingPermissionState
 import com.raku.smsrelay.onboarding.OnboardingStep
+import com.raku.smsrelay.onboarding.isSatisfiedBy
 import com.raku.smsrelay.ui.SmsRelayApp
 import com.raku.smsrelay.sms.IncomingSmsNotifier
 
@@ -28,6 +31,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var notificationPermissionLauncher: ActivityResultLauncher<String>
     private lateinit var roleLauncher: ActivityResultLauncher<android.content.Intent>
     private var pendingOnboardingStep: OnboardingStep? = null
+    private var pendingSettingsRecoveryStep: OnboardingStep? = null
+    private var smsPermissionDenied by mutableStateOf(false)
+    private var notificationPermissionDenied by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -36,12 +42,14 @@ class MainActivity : ComponentActivity() {
             ActivityResultContracts.RequestMultiplePermissions(),
         ) {
             refreshSystemState()
+            smsPermissionDenied = !permissions.hasAllMessagingPermissions
             finishPendingOnboardingStep(OnboardingStep.SMS_PERMISSIONS)
         }
         notificationPermissionLauncher = registerForActivityResult(
             ActivityResultContracts.RequestPermission(),
         ) {
             refreshSystemState()
+            notificationPermissionDenied = !permissions.canPostNotifications
             finishPendingOnboardingStep(OnboardingStep.NOTIFICATIONS)
         }
         roleLauncher = registerForActivityResult(
@@ -66,6 +74,9 @@ class MainActivity : ComponentActivity() {
                 requestOnboardingSmsRole = ::requestOnboardingSmsRole,
                 requestOnboardingSmsPermissions = ::requestOnboardingSmsPermissions,
                 requestOnboardingNotificationPermission = ::requestOnboardingNotificationPermission,
+                smsPermissionDenied = smsPermissionDenied,
+                notificationPermissionDenied = notificationPermissionDenied,
+                openOnboardingSystemSettings = ::openOnboardingSystemSettings,
             )
         }
     }
@@ -73,6 +84,14 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         refreshSystemState()
+        pendingSettingsRecoveryStep?.let { step ->
+            pendingSettingsRecoveryStep = null
+            if (step.isSatisfiedBy(hasSmsRole, permissions)) {
+                if (step == OnboardingStep.SMS_PERMISSIONS) smsPermissionDenied = false
+                if (step == OnboardingStep.NOTIFICATIONS) notificationPermissionDenied = false
+                viewModel.nextOnboarding(step)
+            }
+        }
         if (hasSmsRole && permissions.canReadSms) viewModel.refreshSms()
     }
 
@@ -153,26 +172,40 @@ class MainActivity : ComponentActivity() {
 
     private fun requestOnboardingSmsPermissions() {
         if (permissions.hasAllMessagingPermissions) {
+            smsPermissionDenied = false
             viewModel.nextOnboarding(OnboardingStep.SMS_PERMISSIONS)
             return
         }
         pendingOnboardingStep = OnboardingStep.SMS_PERMISSIONS
+        smsPermissionDenied = false
         requestSmsPermissions()
     }
 
     private fun requestOnboardingNotificationPermission() {
         if (permissions.canPostNotifications || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            notificationPermissionDenied = false
             viewModel.nextOnboarding(OnboardingStep.NOTIFICATIONS)
             return
         }
         pendingOnboardingStep = OnboardingStep.NOTIFICATIONS
+        notificationPermissionDenied = false
         notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+
+    private fun openOnboardingSystemSettings() {
+        pendingSettingsRecoveryStep = viewModel.onboarding.value.step
+        startActivity(
+            Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:$packageName"),
+            ),
+        )
     }
 
     private fun finishPendingOnboardingStep(step: OnboardingStep) {
         if (pendingOnboardingStep != step) return
         pendingOnboardingStep = null
-        viewModel.nextOnboarding(step)
+        if (step.isSatisfiedBy(hasSmsRole, permissions)) viewModel.nextOnboarding(step)
     }
 
     private companion object {

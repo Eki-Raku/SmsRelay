@@ -16,4 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "SmsRelay"
 include(":app")
-
+include(":benchmark")

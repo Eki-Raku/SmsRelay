@@ -17,6 +17,11 @@ data class SmtpSettings(
     val backgroundResidentEnabled: Boolean,
 )
 
+val SmtpSettings.canEnableForwarding: Boolean
+    get() = SmtpConfig.normalizeQqEmail(senderEmail) != null &&
+        SmtpConfig.normalizeRecipientEmail(recipientEmail) != null &&
+        hasAuthorizationCode
+
 data class SmtpRuntimeConfig(
     val enabled: Boolean,
     val senderEmail: String,
@@ -63,7 +68,15 @@ class SettingsRepository(context: Context) {
 
     fun clearAuthorizationCode() {
         credentialStore.clear()
+        preferences.edit().putBoolean(KEY_ENABLED, false).apply()
         mutableSettings.value = loadSettings()
+    }
+
+    fun setForwardingEnabled(enabled: Boolean): Boolean {
+        if (enabled && !mutableSettings.value.canEnableForwarding) return false
+        preferences.edit().putBoolean(KEY_ENABLED, enabled).apply()
+        mutableSettings.value = loadSettings()
+        return true
     }
 
     fun setAutoStart(enabled: Boolean) {

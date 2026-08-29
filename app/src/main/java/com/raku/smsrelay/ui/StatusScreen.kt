@@ -1,9 +1,11 @@
 package com.raku.smsrelay.ui
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -19,22 +21,25 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextMotion
 import androidx.compose.ui.unit.dp
 import com.raku.smsrelay.data.ForwardMessageEntity
 import com.raku.smsrelay.data.ForwardStatus
 import com.raku.smsrelay.data.SmtpSettings
+import com.raku.smsrelay.onboarding.OnboardingStep
 
 @Composable
 fun StatusScreen(
@@ -44,12 +49,20 @@ fun StatusScreen(
     hasSmsRole: Boolean,
     requestPermissions: () -> Unit,
     requestSmsRole: () -> Unit,
-    sendTest: () -> Unit,
+    sendTest: ((Boolean) -> Unit) -> Unit,
     contentPadding: PaddingValues = PaddingValues(),
 ) {
+    val tourTargets = LocalTourTargetRegistry.current
+    var testState by remember { mutableStateOf<UiOperationState>(UiOperationState.Idle) }
     val configured = settings.senderEmail.isNotBlank() &&
         settings.recipientEmail.isNotBlank() && settings.hasAuthorizationCode
     val healthy = settings.enabled && configured && hasSmsPermission && hasSmsRole
+    LaunchedEffect(testState) {
+        if (testState is UiOperationState.Success) {
+            kotlinx.coroutines.delay(1_500)
+            testState = UiOperationState.Idle
+        }
+    }
 
     LazyColumn(
         modifier = Modifier.padding(top = contentPadding.calculateTopPadding()),
@@ -61,7 +74,12 @@ fun StatusScreen(
         ),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        item { BrandHeader(detail = "本机") }
+        item {
+            BrandHeader(
+                detail = "本机",
+                modifier = Modifier.tourTarget(OnboardingStep.WELCOME, tourTargets),
+            )
+        }
         item {
             StatusHero(
                 healthy = healthy,
@@ -70,15 +88,20 @@ fun StatusScreen(
                 configured = configured,
                 forwardingEnabled = settings.enabled,
                 requestSmsRole = requestSmsRole,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .tourTarget(OnboardingStep.DEFAULT_SMS, tourTargets)
+                    .tourTarget(OnboardingStep.SMS_PERMISSIONS, tourTargets)
+                    .tourTarget(OnboardingStep.NOTIFICATIONS, tourTargets),
             )
         }
         if (!hasSmsPermission) {
             item {
-                FilledTonalButton(
+                RelayButton(
                     onClick = requestPermissions,
                     modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.extraLarge,
-                ) { Text("授权短信权限") }
+                    text = "授权短信权限",
+                )
             }
         }
         item {
@@ -102,12 +125,38 @@ fun StatusScreen(
             }
         }
         item {
-            FilledTonalButton(
-                onClick = sendTest,
+            RelayButton(
+                onClick = {
+                    testState = UiOperationState.Running
+                    sendTest { queued ->
+                        testState = if (queued) {
+                            UiOperationState.Success
+                        } else {
+                            UiOperationState.Error("测试消息未能进入发送队列，请重试。")
+                        }
+                    }
+                },
                 enabled = settings.enabled && configured,
                 modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.extraLarge,
-            ) { Text("测试邮件投递链路") }
+                text = "测试邮件投递链路",
+                state = testState,
+            )
+            AnimatedVisibility(testState is UiOperationState.Success) {
+                Text(
+                    "测试消息已进入发送队列，可在最近活动中查看结果。",
+                    modifier = Modifier.padding(top = RelaySpacing.xs),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            AnimatedVisibility(testState is UiOperationState.Error) {
+                Text(
+                    (testState as? UiOperationState.Error)?.message.orEmpty(),
+                    modifier = Modifier.padding(top = RelaySpacing.xs),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
         }
         item {
             SectionHeading(
@@ -118,20 +167,29 @@ fun StatusScreen(
         if (relayMessages.isEmpty()) {
             item { EmptyState("暂无转发记录", "收到短信或执行链路测试后，状态会显示在这里。") }
         } else {
-            items(relayMessages.take(3), key = { it.id }) { RelayMessageCard(it) }
+            items(relayMessages.take(3), key = { it.id }) {
+                RelayMessageCard(it, modifier = Modifier.animateItem())
+            }
         }
     }
 }
 
 @Composable
 private fun Metric(label: String, value: Int, modifier: Modifier) {
-    Column(modifier.padding(horizontal = 14.dp)) {
+    val reducedMotion = RelayTheme.motion.reducedMotion
+    Column(modifier.padding(horizontal = RelaySpacing.md)) {
         AnimatedContent(
             targetState = value,
-            transitionSpec = { (fadeIn() + scaleIn(initialScale = 0.9f)) togetherWith fadeOut() },
+            transitionSpec = {
+                (fadeIn() + slideInVertically { if (reducedMotion) 0 else it.coerceAtMost(8) }) togetherWith
+                    (fadeOut() + slideOutVertically { if (reducedMotion) 0 else -it.coerceAtMost(8) })
+            },
             label = "metric value",
         ) { current ->
-            Text(current.toString(), style = MaterialTheme.typography.headlineSmall)
+            Text(
+                current.toString(),
+                style = MaterialTheme.typography.headlineSmall.copy(textMotion = TextMotion.Animated),
+            )
         }
         Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
@@ -145,29 +203,38 @@ private fun StatusHero(
     configured: Boolean,
     forwardingEnabled: Boolean,
     requestSmsRole: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Surface(
-        color = RelayPalette.Indigo,
-        contentColor = Color.White,
+        modifier = modifier,
+        color = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.onSurface,
         shape = MaterialTheme.shapes.large,
-        shadowElevation = 4.dp,
+        border = androidx.compose.foundation.BorderStroke(
+            0.5.dp,
+            MaterialTheme.colorScheme.outlineVariant,
+        ),
+        shadowElevation = 0.dp,
     ) {
-        Column(Modifier.padding(horizontal = 22.dp, vertical = 21.dp)) {
+        Column(Modifier.padding(horizontal = RelaySpacing.lg, vertical = RelaySpacing.lg)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     Modifier
                         .size(9.dp)
                         .clip(CircleShape)
-                        .background(if (healthy) Color(0xFF62D6C7) else RelayPalette.Amber),
+                        .background(
+                            if (healthy) MaterialTheme.colorScheme.secondary
+                            else MaterialTheme.colorScheme.tertiary,
+                        ),
                 )
-                Spacer(Modifier.size(9.dp))
+                Spacer(Modifier.size(RelaySpacing.xs))
                 Text(
                     if (healthy) "链路健康" else "需要处理",
                     style = MaterialTheme.typography.labelMedium,
-                    color = Color.White.copy(alpha = 0.72f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Spacer(Modifier.height(22.dp))
+            Spacer(Modifier.height(RelaySpacing.xl))
             Text(
                 when {
                     !hasSmsRole -> "受限模式"
@@ -176,7 +243,7 @@ private fun StatusHero(
                 },
                 style = MaterialTheme.typography.headlineSmall,
             )
-            Spacer(Modifier.height(7.dp))
+            Spacer(Modifier.height(RelaySpacing.xs))
             Text(
                 when {
                     !hasSmsRole -> "成为默认短信应用后，可可靠接收 Android 17 的验证码短信。"
@@ -185,19 +252,15 @@ private fun StatusHero(
                     !forwardingEnabled -> "转发目前已暂停。"
                     else -> "新短信会进入系统收件箱，并自动投递到配置的邮箱。"
                 },
-                color = Color.White.copy(alpha = 0.76f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium,
             )
             if (!hasSmsRole) {
-                Spacer(Modifier.height(18.dp))
-                Button(
+                Spacer(Modifier.height(RelaySpacing.lg))
+                RelayButton(
                     onClick = requestSmsRole,
-                    shape = MaterialTheme.shapes.extraLarge,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.White,
-                        contentColor = RelayPalette.Indigo,
-                    ),
-                ) { Text("设为默认短信应用") }
+                    text = "设为默认短信应用",
+                )
             }
         }
     }

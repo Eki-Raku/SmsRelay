@@ -62,7 +62,7 @@
    Windows PowerShell 可运行：
 
    ```powershell
-   Get-FileHash .\SmsRelay-0.4.2-release.apk -Algorithm SHA256
+   Get-FileHash .\SmsRelay-0.5.0-release.apk -Algorithm SHA256
    ```
 
 3. 在备用机上允许浏览器或文件管理器“安装未知应用”，然后打开 APK。

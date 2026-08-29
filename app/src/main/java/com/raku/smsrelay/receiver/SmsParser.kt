@@ -39,7 +39,9 @@ object SmsParser {
             sender = sender,
             body = body,
             receivedAtEpochMs = timestamp,
-            subscriptionId = rawSubscriptionId.takeIf { SubscriptionManager.isValidSubscriptionId(it) },
+            // isValidSubscriptionId() was only added in API 29; non-negative IDs are the
+            // platform contract on earlier supported versions as well.
+            subscriptionId = rawSubscriptionId.takeIf { it >= 0 },
         )
     }
 }

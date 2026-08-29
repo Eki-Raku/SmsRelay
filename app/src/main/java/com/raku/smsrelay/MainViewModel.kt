@@ -54,13 +54,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         senderEmail: String,
         recipientEmail: String,
         authorizationCode: String,
-    ) {
+    ): Boolean {
         val current = settings.value
         val normalizedSender = SmtpConfig.normalizeQqEmail(senderEmail)
         val normalizedRecipient = SmtpConfig.normalizeRecipientEmail(recipientEmail)
         if (normalizedSender == null || normalizedRecipient == null) {
             mutableEvents.tryEmit("请检查发件和收件邮箱格式")
-            return
+            return false
         }
         if (
             current.hasAuthorizationCode &&
@@ -69,15 +69,36 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             authorizationCode.isBlank()
         ) {
             mutableEvents.tryEmit("更换发件账号时需要填写对应的新授权码")
-            return
+            return false
         }
-        container.settingsRepository.save(
-            enabled = enabled,
-            senderEmail = senderEmail,
-            recipientEmail = recipientEmail,
-            newAuthorizationCode = authorizationCode,
+        return runCatching {
+            container.settingsRepository.save(
+                enabled = enabled,
+                senderEmail = senderEmail,
+                recipientEmail = recipientEmail,
+                newAuthorizationCode = authorizationCode,
+            )
+        }.fold(
+            onSuccess = {
+                mutableEvents.tryEmit("设置已保存")
+                true
+            },
+            onFailure = {
+                mutableEvents.tryEmit("邮件设置保存失败，请重试")
+                false
+            },
         )
-        mutableEvents.tryEmit("设置已保存")
+    }
+
+    fun setForwardingEnabled(enabled: Boolean) {
+        val accepted = container.settingsRepository.setForwardingEnabled(enabled)
+        mutableEvents.tryEmit(
+            when {
+                !accepted -> "请先完成发件邮箱、收件邮箱和 SMTP 授权码配置"
+                enabled -> "自动转发已开启"
+                else -> "自动转发已暂停"
+            },
+        )
     }
 
     fun refreshSms() {
@@ -188,7 +209,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun sendTest() {
+    fun sendTest(onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
             val currentSettings: SmtpSettings = settings.value
             if (
@@ -198,6 +219,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 !currentSettings.hasAuthorizationCode
             ) {
                 mutableEvents.emit("请先完成 QQ SMTP 配置并开启转发")
+                onResult(false)
                 return@launch
             }
 
@@ -212,10 +234,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 simLabel = "测试",
                 isTest = true,
             )
-            if (dao.insert(message) != -1L) {
+            val queued = runCatching {
+                if (dao.insert(message) == -1L) return@runCatching false
                 container.scheduler.enqueue(message.id, replace = true)
+                true
+            }.getOrDefault(false)
+            if (queued) {
                 mutableEvents.emit("测试消息已进入发送队列")
+            } else {
+                mutableEvents.emit("测试消息未能进入发送队列，请重试")
             }
+            onResult(queued)
         }
     }
 }

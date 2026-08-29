@@ -5,6 +5,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,18 +20,25 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -43,8 +51,8 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 @Composable
-internal fun BrandHeader(detail: String) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+internal fun BrandHeader(detail: String, modifier: Modifier = Modifier) {
+    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
         Box(
             modifier = Modifier
                 .size(48.dp)
@@ -59,7 +67,7 @@ internal fun BrandHeader(detail: String) {
                 contentScale = ContentScale.Fit,
             )
         }
-        Spacer(Modifier.width(13.dp))
+        Spacer(Modifier.width(RelaySpacing.sm))
         Column(Modifier.weight(1f)) {
             Text("短信信使", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(2.dp))
@@ -84,9 +92,9 @@ internal fun ScreenHeader(eyebrow: String, title: String, detail: String) {
             fontWeight = FontWeight.SemiBold,
             letterSpacing = 1.1.sp,
         )
-        Spacer(Modifier.height(7.dp))
+        Spacer(Modifier.height(RelaySpacing.xs))
         Text(title, style = MaterialTheme.typography.headlineLarge)
-        Spacer(Modifier.height(7.dp))
+        Spacer(Modifier.height(RelaySpacing.xs))
         Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
@@ -94,7 +102,7 @@ internal fun ScreenHeader(eyebrow: String, title: String, detail: String) {
 @Composable
 internal fun SectionHeading(title: String, detail: String? = null) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 2.dp),
+        modifier = Modifier.fillMaxWidth().padding(top = RelaySpacing.sm, bottom = 2.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.Bottom,
     ) {
@@ -113,7 +121,7 @@ internal fun HairlineCard(
         color = MaterialTheme.colorScheme.surface,
         shape = MaterialTheme.shapes.large,
         border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)),
-        shadowElevation = 1.dp,
+        shadowElevation = 0.dp,
         tonalElevation = 0.dp,
         content = { content() },
     )
@@ -124,14 +132,14 @@ internal fun EmptyState(title: String, detail: String) {
     HairlineCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(20.dp)) {
             Text(title, style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(RelaySpacing.xs))
             Text(detail, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
 @Composable
-internal fun StatusBadge(status: String) {
+internal fun StatusPill(status: String) {
     val (background, foreground) = when (status) {
         ForwardStatus.SENT -> MaterialTheme.colorScheme.secondaryContainer to MaterialTheme.colorScheme.onSecondaryContainer
         ForwardStatus.FAILED -> MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.onErrorContainer
@@ -141,7 +149,9 @@ internal fun StatusBadge(status: String) {
     val animatedForeground by animateColorAsState(foreground, label = "status badge foreground")
     Text(
         text = statusLabel(status),
-        modifier = Modifier.background(animatedBackground, CircleShape).padding(horizontal = 10.dp, vertical = 5.dp),
+        modifier = Modifier
+            .background(animatedBackground, CircleShape)
+            .padding(horizontal = RelaySpacing.sm, vertical = RelaySpacing.xxs),
         color = animatedForeground,
         style = MaterialTheme.typography.labelSmall,
         fontWeight = FontWeight.SemiBold,
@@ -151,11 +161,30 @@ internal fun StatusBadge(status: String) {
 @Composable
 internal fun RelayMessageCard(
     message: ForwardMessageEntity,
-    retry: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier,
+    retry: ((String) -> Unit)? = null,
 ) {
-    HairlineCard(modifier.fillMaxWidth().animateContentSize(spring(dampingRatio = 0.86f, stiffness = 420f))) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 15.dp)) {
+    var retrying by remember(message.id) { mutableStateOf(false) }
+    val haptics = LocalHapticFeedback.current
+    LaunchedEffect(retrying, message.status) {
+        if (retrying) {
+            if (message.status != ForwardStatus.FAILED) {
+                haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+                retrying = false
+            } else {
+                kotlinx.coroutines.delay(1_000)
+                retrying = false
+            }
+        }
+    }
+    HairlineCard(
+        modifier.fillMaxWidth().animateContentSize(
+            if (RelayTheme.motion.reducedMotion) snap() else {
+                spring(dampingRatio = 0.86f, stiffness = 420f)
+            },
+        ),
+    ) {
+        Column(Modifier.padding(horizontal = RelaySpacing.md, vertical = RelaySpacing.md)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     if (message.isTest) "链路测试" else message.sender,
@@ -163,33 +192,45 @@ internal fun RelayMessageCard(
                     style = MaterialTheme.typography.titleSmall,
                 )
                 Spacer(Modifier.width(12.dp))
-                StatusBadge(message.status)
+                StatusPill(message.status)
             }
             Spacer(Modifier.height(8.dp))
             Text(message.body, maxLines = 3, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
-            Spacer(Modifier.height(9.dp))
+            Spacer(Modifier.height(RelaySpacing.xs))
             Text(
                 "${formatTime(message.receivedAtEpochMs)}${message.simLabel?.let { " · $it" }.orEmpty()}",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             message.lastError?.takeIf { it.isNotBlank() }?.let {
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(RelaySpacing.xs))
                 Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
             if (message.status == ForwardStatus.FAILED && retry != null) {
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(RelaySpacing.sm))
                 TextButton(
-                    onClick = { retry(message.id) },
+                    onClick = {
+                        retrying = true
+                        retry(message.id)
+                    },
+                    enabled = !retrying,
                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.primary),
-                ) { Text("重新发送") }
+                ) {
+                    if (retrying) {
+                        CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text("正在重试")
+                    } else {
+                        Text("重新发送")
+                    }
+                }
             }
         }
     }
 }
 
 private fun statusLabel(status: String): String = when (status) {
-    ForwardStatus.PENDING -> "等待"
+    ForwardStatus.PENDING -> "排队中"
     ForwardStatus.SENDING -> "发送中"
     ForwardStatus.SENT -> "已发送"
     ForwardStatus.RETRY -> "待重试"

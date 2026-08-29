@@ -69,6 +69,16 @@ data class MessagingPermissionState(
     }
 }
 
+fun OnboardingStep.isSatisfiedBy(
+    roleHeld: Boolean,
+    permissions: MessagingPermissionState,
+): Boolean = when (this) {
+    OnboardingStep.WELCOME, OnboardingStep.SETTINGS -> true
+    OnboardingStep.DEFAULT_SMS -> roleHeld
+    OnboardingStep.SMS_PERMISSIONS -> permissions.hasAllMessagingPermissions
+    OnboardingStep.NOTIFICATIONS -> permissions.canPostNotifications
+}
+
 enum class SmsInboxBlockReason {
     DEFAULT_ROLE,
     READ_PERMISSION,

@@ -3,6 +3,7 @@ package com.raku.smsrelay.ui
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -23,11 +24,15 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -44,6 +49,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -67,23 +73,45 @@ fun OnboardingTour(
     requestSmsRole: () -> Unit,
     requestSmsPermissions: () -> Unit,
     requestNotificationPermission: () -> Unit,
+    smsPermissionDenied: Boolean = false,
+    notificationPermissionDenied: Boolean = false,
+    openSystemSettings: () -> Unit = {},
     hazeState: HazeState? = null,
 ) {
     if (!state.visible) return
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val requestedTarget = tourTarget(state.step, maxWidth, maxHeight)
-        val target = requestedTarget.copy(
-            x = animateDpAsState(requestedTarget.x, spring(dampingRatio = 0.86f), label = "tour x").value,
-            y = animateDpAsState(requestedTarget.y, spring(dampingRatio = 0.86f), label = "tour y").value,
-            width = animateDpAsState(requestedTarget.width, spring(dampingRatio = 0.86f), label = "tour width").value,
-            height = animateDpAsState(requestedTarget.height, spring(dampingRatio = 0.86f), label = "tour height").value,
-            cardTop = animateDpAsState(requestedTarget.cardTop, spring(dampingRatio = 0.86f), label = "tour card").value,
-        )
         val density = LocalDensity.current
+        val motion = RelayTheme.motion
+        val registry = LocalTourTargetRegistry.current
+        val requestedTarget = registry.bounds(state.step)?.let { bounds ->
+            with(density) {
+                val x = bounds.left.toDp().coerceIn(8.dp, maxWidth - 8.dp)
+                val y = bounds.top.toDp().coerceIn(8.dp, maxHeight - 8.dp)
+                val width = bounds.width.toDp().coerceAtMost(maxWidth - x - 8.dp)
+                val height = bounds.height.toDp().coerceAtMost(maxHeight - y - 8.dp)
+                val below = y + height + 16.dp
+                TourTarget(
+                    x = x,
+                    y = y,
+                    width = width,
+                    height = height,
+                    cardTop = if (below + 250.dp < maxHeight) below else (y - 258.dp).coerceAtLeast(16.dp),
+                )
+            }
+        } ?: tourTarget(state.step, maxWidth, maxHeight)
+        val positionSpec = if (motion.reducedMotion) snap<Dp>() else spring(dampingRatio = 0.86f)
+        val target = requestedTarget.copy(
+            x = animateDpAsState(requestedTarget.x, positionSpec, label = "tour x").value,
+            y = animateDpAsState(requestedTarget.y, positionSpec, label = "tour y").value,
+            width = animateDpAsState(requestedTarget.width, positionSpec, label = "tour width").value,
+            height = animateDpAsState(requestedTarget.height, positionSpec, label = "tour height").value,
+            cardTop = animateDpAsState(requestedTarget.cardTop, positionSpec, label = "tour card").value,
+        )
         val interactionSource = remember { MutableInteractionSource() }
+        val bottomSheetLayout = density.fontScale >= 1.5f || maxWidth < 360.dp || maxHeight < 600.dp
 
-        if (hazeState != null) {
+        if (hazeState != null && !motion.reducedMotion) {
             TourBackdropBlur(
                 hazeState = hazeState,
                 target = target,
@@ -118,7 +146,8 @@ fun OnboardingTour(
             Modifier
                 .offset(target.x, target.y)
                 .size(target.width, target.height)
-                .border(2.dp, RelayPalette.Violet, RoundedCornerShape(18.dp)),
+                .testTag("tour-cutout-${state.step.name}")
+                .border(2.dp, MaterialTheme.colorScheme.primary, MaterialTheme.shapes.large),
         )
 
         TourCard(
@@ -131,10 +160,21 @@ fun OnboardingTour(
             requestSmsRole = requestSmsRole,
             requestSmsPermissions = requestSmsPermissions,
             requestNotificationPermission = requestNotificationPermission,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(horizontal = 18.dp)
-                .offset(y = target.cardTop),
+            smsPermissionDenied = smsPermissionDenied,
+            notificationPermissionDenied = notificationPermissionDenied,
+            openSystemSettings = openSystemSettings,
+            maxCardHeight = if (bottomSheetLayout) maxHeight - 40.dp else null,
+            modifier = if (bottomSheetLayout) {
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(horizontal = 12.dp, vertical = 20.dp)
+            } else {
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(horizontal = RelaySpacing.lg)
+                    .offset(y = target.cardTop)
+            },
         )
     }
 }
@@ -187,21 +227,45 @@ private fun TourCard(
     requestSmsRole: () -> Unit,
     requestSmsPermissions: () -> Unit,
     requestNotificationPermission: () -> Unit,
+    smsPermissionDenied: Boolean,
+    notificationPermissionDenied: Boolean,
+    openSystemSettings: () -> Unit,
+    maxCardHeight: Dp?,
     modifier: Modifier,
 ) {
-    val copy = tourCopy(state.step, hasSmsRole, permissions)
+    val copy = tourCopy(
+        state.step,
+        hasSmsRole,
+        permissions,
+        smsPermissionDenied,
+        notificationPermissionDenied,
+    )
+    val motion = RelayTheme.motion
     val usesLargeTextLayout = LocalDensity.current.fontScale >= 1.5f
-    val primaryAction = when (state.step) {
-        OnboardingStep.WELCOME, OnboardingStep.SETTINGS -> next
-        OnboardingStep.DEFAULT_SMS -> if (hasSmsRole) next else requestSmsRole
-        OnboardingStep.SMS_PERMISSIONS -> {
-            if (permissions.hasAllMessagingPermissions) next else requestSmsPermissions
-        }
-        OnboardingStep.NOTIFICATIONS -> {
-            if (permissions.canPostNotifications) next else requestNotificationPermission
+    val recoveryNeeded = when (state.step) {
+        OnboardingStep.SMS_PERMISSIONS -> smsPermissionDenied && !permissions.hasAllMessagingPermissions
+        OnboardingStep.NOTIFICATIONS -> notificationPermissionDenied && !permissions.canPostNotifications
+        else -> false
+    }
+    val primaryAction = if (recoveryNeeded) {
+        openSystemSettings
+    } else {
+        when (state.step) {
+            OnboardingStep.WELCOME, OnboardingStep.SETTINGS -> next
+            OnboardingStep.DEFAULT_SMS -> if (hasSmsRole) next else requestSmsRole
+            OnboardingStep.SMS_PERMISSIONS -> {
+                if (permissions.hasAllMessagingPermissions) next else requestSmsPermissions
+            }
+            OnboardingStep.NOTIFICATIONS -> {
+                if (permissions.canPostNotifications) next else requestNotificationPermission
+            }
         }
     }
-    Box(modifier.widthIn(max = 420.dp)) {
+    Box(
+        modifier
+            .widthIn(max = 420.dp)
+            .then(maxCardHeight?.let { Modifier.heightIn(max = it) } ?: Modifier),
+    ) {
         Box(
             Modifier
                 .align(Alignment.TopCenter)
@@ -213,11 +277,18 @@ private fun TourCard(
         Surface(
             color = MaterialTheme.colorScheme.surface,
             contentColor = MaterialTheme.colorScheme.onSurface,
-            shape = RoundedCornerShape(24.dp),
+            shape = MaterialTheme.shapes.large,
             shadowElevation = 18.dp,
             tonalElevation = 0.dp,
         ) {
-            Column(Modifier.padding(18.dp).animateContentSize(spring(dampingRatio = 0.88f))) {
+            Column(
+                Modifier
+                    .verticalScroll(rememberScrollState())
+                    .padding(RelaySpacing.lg)
+                    .animateContentSize(
+                        if (motion.reducedMotion) snap() else spring(dampingRatio = 0.88f),
+                    ),
+            ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         "${state.stepNumber} / ${state.stepCount}",
@@ -228,7 +299,7 @@ private fun TourCard(
                     Spacer(Modifier.weight(1f))
                     Text(
                         "跳过",
-                        modifier = Modifier.clickable(onClick = skip).padding(6.dp),
+                        modifier = Modifier.clickable(onClick = skip).padding(RelaySpacing.xs),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -237,14 +308,14 @@ private fun TourCard(
                 AnimatedContent(
                     targetState = copy,
                     transitionSpec = {
-                        (fadeIn() + scaleIn(initialScale = 0.98f)) togetherWith
-                            (fadeOut() + scaleOut(targetScale = 0.98f))
+                        (fadeIn() + scaleIn(initialScale = if (motion.reducedMotion) 1f else 0.98f)) togetherWith
+                            (fadeOut() + scaleOut(targetScale = if (motion.reducedMotion) 1f else 0.98f))
                     },
                     label = "tour copy",
                 ) { currentCopy ->
                     Column {
                         Text(currentCopy.title, style = MaterialTheme.typography.titleLarge)
-                        Spacer(Modifier.height(7.dp))
+                        Spacer(Modifier.height(RelaySpacing.xs))
                         Text(
                             currentCopy.body,
                             style = MaterialTheme.typography.bodyMedium,
@@ -258,28 +329,28 @@ private fun TourCard(
                         it,
                         modifier = Modifier
                             .background(MaterialTheme.colorScheme.primaryContainer, CircleShape)
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                            .padding(horizontal = RelaySpacing.sm, vertical = RelaySpacing.xs),
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                         style = MaterialTheme.typography.labelSmall,
                     )
                 }
-                Spacer(Modifier.height(18.dp))
+                Spacer(Modifier.height(RelaySpacing.lg))
                 if (usesLargeTextLayout) {
-                    Row(
+                    Column(
                         Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        if (state.step != OnboardingStep.WELCOME) {
-                            TextButton(onClick = previous, modifier = Modifier.weight(1f)) {
-                                Text("上一步", maxLines = 1, overflow = TextOverflow.Clip)
-                            }
-                        }
                         Button(
                             onClick = primaryAction,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.fillMaxWidth(),
                             shape = MaterialTheme.shapes.extraLarge,
                         ) {
-                            Text(copy.primaryLabel, maxLines = 1, overflow = TextOverflow.Clip)
+                            Text(copy.primaryLabel)
+                        }
+                        if (state.step != OnboardingStep.WELCOME) {
+                            TextButton(onClick = previous, modifier = Modifier.fillMaxWidth()) {
+                                Text("上一步")
+                            }
                         }
                     }
                 } else {
@@ -328,6 +399,8 @@ private fun tourCopy(
     step: OnboardingStep,
     hasSmsRole: Boolean,
     permissions: MessagingPermissionState,
+    smsPermissionDenied: Boolean,
+    notificationPermissionDenied: Boolean,
 ): TourCopy = when (step) {
     OnboardingStep.WELCOME -> TourCopy(
         title = "欢迎使用短信信使",
@@ -343,16 +416,30 @@ private fun tourCopy(
     OnboardingStep.SMS_PERMISSIONS -> TourCopy(
         title = "允许读取、接收与发送短信",
         body = "读取权限用于展示系统收件箱；接收权限用于转发新短信；发送权限用于在短信页回复。彩信相关权限只用于满足默认短信角色契约。",
-        primaryLabel = if (permissions.hasAllMessagingPermissions) "下一步" else "同意并继续",
-        status = if (permissions.hasAllMessagingPermissions) "短信权限已完整" else {
+        primaryLabel = when {
+            permissions.hasAllMessagingPermissions -> "下一步"
+            smsPermissionDenied -> "前往系统设置"
+            else -> "同意并继续"
+        },
+        status = if (permissions.hasAllMessagingPermissions) "短信权限已完整" else if (smsPermissionDenied) {
+            "未授权，请在系统设置中恢复后返回"
+        } else {
             permissions.missingCorePermissionLabels.joinToString("、").ifBlank { "等待短信权限" }
         },
     )
     OnboardingStep.NOTIFICATIONS -> TourCopy(
         title = "允许通知与后台状态提醒",
         body = "通知用于显示后台常驻和投递失败提醒。小米的自启动与省电白名单仍需在系统权限管理中单独设置。",
-        primaryLabel = if (permissions.canPostNotifications) "下一步" else "同意并继续",
-        status = if (permissions.canPostNotifications) "通知权限已开启" else "等待通知权限",
+        primaryLabel = when {
+            permissions.canPostNotifications -> "下一步"
+            notificationPermissionDenied -> "前往系统设置"
+            else -> "同意并继续"
+        },
+        status = when {
+            permissions.canPostNotifications -> "通知权限已开启"
+            notificationPermissionDenied -> "未授权，请在系统设置中恢复后返回"
+            else -> "等待通知权限"
+        },
     )
     OnboardingStep.SETTINGS -> TourCopy(
         title = "完成邮箱设置",
