@@ -111,11 +111,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 mutableThreadMessages.value = emptyList()
                 return@launch
             }
-            runCatching { container.systemSmsRepository.conversations() }
+            runCatchingCancellable { container.systemSmsRepository.conversations() }
                 .onSuccess { mutableConversations.value = it }
                 .onFailure { mutableEvents.emit(smsReadFailureMessage(it)) }
             mutableSelectedThreadId.value?.let { threadId ->
-                runCatching { container.systemSmsRepository.messages(threadId) }
+                runCatchingCancellable { container.systemSmsRepository.messages(threadId) }
                     .onSuccess {
                         if (mutableSelectedThreadId.value == threadId) {
                             mutableThreadMessages.value = it
@@ -131,7 +131,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         mutableSelectedThreadId.value = threadId
         viewModelScope.launch {
-            val result = runCatching {
+            val result = runCatchingCancellable {
                 container.systemSmsRepository.markThreadRead(threadId)
                 container.incomingSmsNotifier.dismiss(threadId)
                 container.systemSmsRepository.messages(threadId)
@@ -143,7 +143,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
                 .onFailure { mutableEvents.emit("无法打开这条短信会话") }
             if (result.isSuccess) {
-                runCatching { container.systemSmsRepository.conversations() }
+                runCatchingCancellable { container.systemSmsRepository.conversations() }
                     .onSuccess { conversations -> mutableConversations.value = conversations }
             }
         }
@@ -182,7 +182,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun sendSms(destination: String, body: String) {
         viewModelScope.launch {
-            when (val result = runCatching {
+            when (val result = runCatchingCancellable {
                 container.smsSendController.send(destination = destination, body = body)
             }.getOrElse { SmsSendRequestResult.Rejected("短信发送失败") }) {
                 is SmsSendRequestResult.Queued -> {
@@ -248,8 +248,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 simLabel = "测试",
                 isTest = true,
             )
-            val queued = runCatching {
-                if (dao.insert(message) == -1L) return@runCatching false
+            val queued = runCatchingCancellable {
+                if (dao.insert(message) == -1L) return@runCatchingCancellable false
                 container.scheduler.enqueue(message.id, replace = true)
                 true
             }.getOrDefault(false)
