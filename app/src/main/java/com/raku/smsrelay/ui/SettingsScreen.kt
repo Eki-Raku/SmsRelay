@@ -90,6 +90,7 @@ fun SettingsScreen(
     val tourTargets = LocalTourTargetRegistry.current
     var enabled by remember(settings.enabled) { mutableStateOf(settings.enabled) }
     var showingInternalMailSettings by remember { mutableStateOf(false) }
+    val scrollState = rememberScrollState()
     if (showingInternalMailSettings) {
         MailSettingsScreen(
             settings = settings.copy(enabled = enabled),
@@ -101,18 +102,19 @@ fun SettingsScreen(
         return
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(
-                start = RelaySpacing.lg,
-                top = contentPadding.calculateTopPadding(),
-                end = RelaySpacing.lg,
-            )
-            .verticalScroll(rememberScrollState())
-            .padding(top = RelaySpacing.lg, bottom = contentPadding.calculateBottomPadding() + RelaySpacing.xxl),
-        verticalArrangement = Arrangement.spacedBy(RelaySpacing.sm),
-    ) {
+    Box(Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(
+                    start = RelaySpacing.lg,
+                    top = contentPadding.calculateTopPadding(),
+                    end = RelaySpacing.lg,
+                )
+                .verticalScroll(scrollState)
+                .padding(top = RelaySpacing.lg, bottom = contentPadding.calculateBottomPadding() + RelaySpacing.xxl),
+            verticalArrangement = Arrangement.spacedBy(RelaySpacing.sm),
+        ) {
         ScreenHeader("SETTINGS", "设置", "系统能力、自动化与邮件投递。")
 
         SettingsGroupTitle("系统能力")
@@ -221,11 +223,20 @@ fun SettingsScreen(
                 }
             }
         }
-        Text(
-            "凭据仅保存在本机 Android Keystore。SmsRelay 未实现端到端加密，请勿用于高安全场景。",
-            modifier = Modifier.padding(horizontal = RelaySpacing.xxs),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            Text(
+                "凭据仅保存在本机 Android Keystore。SmsRelay 未实现端到端加密，请勿用于高安全场景。",
+                modifier = Modifier.padding(horizontal = RelaySpacing.xxs),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        RelayScrollIndicator(
+            state = scrollState,
+            modifier = Modifier.padding(
+                top = contentPadding.calculateTopPadding(),
+                bottom = contentPadding.calculateBottomPadding(),
+            ),
+            testTag = "settings-scroll-indicator",
         )
     }
 }
@@ -246,6 +257,7 @@ fun MailSettingsScreen(
     var revealCode by remember { mutableStateOf(false) }
     var saveState by remember { mutableStateOf<UiOperationState>(UiOperationState.Idle) }
     var confirmClear by remember { mutableStateOf(false) }
+    val formScrollState = rememberScrollState()
     val senderError = senderEmail.isNotBlank() && SmtpConfig.normalizeQqEmail(senderEmail) == null
     val recipientError = recipientEmail.isNotBlank() && SmtpConfig.normalizeRecipientEmail(recipientEmail) == null
     val changedSenderNeedsCode = settings.hasAuthorizationCode &&
@@ -270,75 +282,82 @@ fun MailSettingsScreen(
     ) {
         RelayTopBar("邮件投递", onBack)
         HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
-        Column(
-            Modifier
-                .weight(1f)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = RelaySpacing.lg, vertical = RelaySpacing.lg),
-            verticalArrangement = Arrangement.spacedBy(RelaySpacing.md),
-        ) {
-            Text(
-                "发件和收件邮箱可独立配置。发件账号必须是已开启 SMTP 的 QQ 邮箱。",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            RelayTextField(
-                value = senderEmail,
-                onValueChange = { senderEmail = it; saveState = UiOperationState.Idle },
-                label = "发件 QQ 邮箱",
-                placeholder = "your-account@qq.com",
-                icon = Icons.Outlined.Email,
-                keyboardType = KeyboardType.Email,
-                error = if (senderError) "请输入有效的 QQ 邮箱" else null,
-            )
-            AnimatedVisibility(changedSenderNeedsCode) {
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .verticalScroll(formScrollState)
+                    .padding(horizontal = RelaySpacing.lg, vertical = RelaySpacing.lg),
+                verticalArrangement = Arrangement.spacedBy(RelaySpacing.md),
+            ) {
                 Text(
-                    "更换发件账号时，请填写该账号对应的新授权码。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
+                    "发件和收件邮箱可独立配置。发件账号必须是已开启 SMTP 的 QQ 邮箱。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            }
-            RelayTextField(
-                value = recipientEmail,
-                onValueChange = { recipientEmail = it; saveState = UiOperationState.Idle },
-                label = "收件邮箱",
-                placeholder = "archive@example.com",
-                icon = Icons.AutoMirrored.Outlined.Send,
-                keyboardType = KeyboardType.Email,
-                error = if (recipientError) "请输入有效的收件邮箱" else null,
-            )
-            RelayTextField(
-                value = authorizationCode,
-                onValueChange = { authorizationCode = it; saveState = UiOperationState.Idle },
-                label = if (settings.hasAuthorizationCode) "SMTP 授权码 · 已配置" else "SMTP 授权码",
-                placeholder = if (settings.hasAuthorizationCode) "留空以保留现有授权码" else "不是 QQ 登录密码",
-                icon = Icons.Outlined.Lock,
-                password = !revealCode,
-                trailing = {
-                    TextButton(onClick = { revealCode = !revealCode }) {
-                        Text(if (revealCode) "隐藏" else "显示")
-                    }
-                },
-            )
-            AnimatedVisibility(saveState is UiOperationState.Error) {
-                Text(
-                    (saveState as? UiOperationState.Error)?.message.orEmpty(),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
+                RelayTextField(
+                    value = senderEmail,
+                    onValueChange = { senderEmail = it; saveState = UiOperationState.Idle },
+                    label = "发件 QQ 邮箱",
+                    placeholder = "your-account@qq.com",
+                    icon = Icons.Outlined.Email,
+                    keyboardType = KeyboardType.Email,
+                    error = if (senderError) "请输入有效的 QQ 邮箱" else null,
                 )
-            }
-            if (settings.hasAuthorizationCode) {
-                TextButton(
-                    onClick = { confirmClear = true },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text("清除 SMTP 授权码", color = MaterialTheme.colorScheme.error)
+                AnimatedVisibility(changedSenderNeedsCode) {
+                    Text(
+                        "更换发件账号时，请填写该账号对应的新授权码。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
                 }
+                RelayTextField(
+                    value = recipientEmail,
+                    onValueChange = { recipientEmail = it; saveState = UiOperationState.Idle },
+                    label = "收件邮箱",
+                    placeholder = "archive@example.com",
+                    icon = Icons.AutoMirrored.Outlined.Send,
+                    keyboardType = KeyboardType.Email,
+                    error = if (recipientError) "请输入有效的收件邮箱" else null,
+                )
+                RelayTextField(
+                    value = authorizationCode,
+                    onValueChange = { authorizationCode = it; saveState = UiOperationState.Idle },
+                    label = if (settings.hasAuthorizationCode) "SMTP 授权码 · 已配置" else "SMTP 授权码",
+                    placeholder = if (settings.hasAuthorizationCode) "留空以保留现有授权码" else "不是 QQ 登录密码",
+                    icon = Icons.Outlined.Lock,
+                    password = !revealCode,
+                    trailing = {
+                        TextButton(onClick = { revealCode = !revealCode }) {
+                            Text(if (revealCode) "隐藏" else "显示")
+                        }
+                    },
+                )
+                AnimatedVisibility(saveState is UiOperationState.Error) {
+                    Text(
+                        (saveState as? UiOperationState.Error)?.message.orEmpty(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+                if (settings.hasAuthorizationCode) {
+                    TextButton(
+                        onClick = { confirmClear = true },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("清除 SMTP 授权码", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+                Text(
+                    "smtp.qq.com:587 · STARTTLS\n授权码经 Android Keystore 加密保存。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
-            Text(
-                "smtp.qq.com:587 · STARTTLS\n授权码经 Android Keystore 加密保存。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            RelayScrollIndicator(
+                state = formScrollState,
+                modifier = Modifier.padding(end = RelaySpacing.xxs),
+                testTag = "mail-settings-scroll-indicator",
             )
         }
         Surface(

@@ -242,6 +242,7 @@ private fun TourCard(
     )
     val motion = RelayTheme.motion
     val usesLargeTextLayout = LocalDensity.current.fontScale >= 1.5f
+    val scrollState = rememberScrollState()
     val recoveryNeeded = when (state.step) {
         OnboardingStep.SMS_PERMISSIONS -> smsPermissionDenied && !permissions.hasAllMessagingPermissions
         OnboardingStep.NOTIFICATIONS -> notificationPermissionDenied && !permissions.canPostNotifications
@@ -281,14 +282,15 @@ private fun TourCard(
             shadowElevation = 18.dp,
             tonalElevation = 0.dp,
         ) {
-            Column(
-                Modifier
-                    .verticalScroll(rememberScrollState())
-                    .padding(RelaySpacing.lg)
-                    .animateContentSize(
-                        if (motion.reducedMotion) snap() else spring(dampingRatio = 0.88f),
-                    ),
-            ) {
+            Box {
+                Column(
+                    Modifier
+                        .verticalScroll(scrollState)
+                        .padding(RelaySpacing.lg)
+                        .animateContentSize(
+                            if (motion.reducedMotion) snap() else spring(dampingRatio = 0.88f),
+                        ),
+                ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         "${state.stepNumber} / ${state.stepCount}",
@@ -299,7 +301,7 @@ private fun TourCard(
                     Spacer(Modifier.weight(1f))
                     Text(
                         "跳过",
-                        modifier = Modifier.clickable(onClick = skip).padding(RelaySpacing.xs),
+                        modifier = Modifier.relayClickable(onClick = skip).padding(RelaySpacing.xs),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -383,6 +385,12 @@ private fun TourCard(
                     }
                 }
                 }
+                }
+                RelayScrollIndicator(
+                    state = scrollState,
+                    modifier = Modifier.padding(end = RelaySpacing.xxs),
+                    testTag = "onboarding-scroll-indicator",
+                )
             }
         }
     }

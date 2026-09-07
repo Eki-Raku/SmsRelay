@@ -15,11 +15,13 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -63,114 +65,128 @@ fun StatusScreen(
             testState = UiOperationState.Idle
         }
     }
+    val listState = rememberLazyListState()
 
-    LazyColumn(
-        modifier = Modifier.padding(top = contentPadding.calculateTopPadding()),
-        contentPadding = PaddingValues(
-            start = 20.dp,
-            top = 22.dp,
-            end = 20.dp,
-            bottom = contentPadding.calculateBottomPadding() + 24.dp,
-        ),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        item {
-            BrandHeader(
-                detail = "本机",
-                modifier = Modifier.tourTarget(OnboardingStep.WELCOME, tourTargets),
-            )
-        }
-        item {
-            StatusHero(
-                healthy = healthy,
-                hasSmsRole = hasSmsRole,
-                hasSmsPermission = hasSmsPermission,
-                configured = configured,
-                forwardingEnabled = settings.enabled,
-                requestSmsRole = requestSmsRole,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .tourTarget(OnboardingStep.DEFAULT_SMS, tourTargets)
-                    .tourTarget(OnboardingStep.SMS_PERMISSIONS, tourTargets)
-                    .tourTarget(OnboardingStep.NOTIFICATIONS, tourTargets),
-            )
-        }
-        if (!hasSmsPermission) {
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(top = contentPadding.calculateTopPadding()),
+            state = listState,
+            contentPadding = PaddingValues(
+                start = 20.dp,
+                top = 22.dp,
+                end = 20.dp,
+                bottom = contentPadding.calculateBottomPadding() + 24.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
             item {
-                RelayButton(
-                    onClick = requestPermissions,
-                    modifier = Modifier.fillMaxWidth(),
-                    text = "授权短信权限",
+                BrandHeader(
+                    detail = "本机",
+                    modifier = Modifier.tourTarget(OnboardingStep.WELCOME, tourTargets),
                 )
             }
-        }
-        item {
-            HairlineCard(Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Metric("已发送", relayMessages.count { it.status == ForwardStatus.SENT }, Modifier.weight(1f))
-                    VerticalDivider(Modifier.height(42.dp), color = MaterialTheme.colorScheme.outlineVariant)
-                    Metric(
-                        "队列中",
-                        relayMessages.count {
-                            it.status in setOf(ForwardStatus.PENDING, ForwardStatus.SENDING, ForwardStatus.RETRY)
-                        },
-                        Modifier.weight(1f),
+            item {
+                StatusHero(
+                    healthy = healthy,
+                    hasSmsRole = hasSmsRole,
+                    hasSmsPermission = hasSmsPermission,
+                    configured = configured,
+                    forwardingEnabled = settings.enabled,
+                    requestSmsRole = requestSmsRole,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .tourTarget(OnboardingStep.DEFAULT_SMS, tourTargets)
+                        .tourTarget(OnboardingStep.SMS_PERMISSIONS, tourTargets)
+                        .tourTarget(OnboardingStep.NOTIFICATIONS, tourTargets),
+                )
+            }
+            if (!hasSmsPermission) {
+                item {
+                    RelayButton(
+                        onClick = requestPermissions,
+                        modifier = Modifier.fillMaxWidth(),
+                        text = "授权短信权限",
                     )
-                    VerticalDivider(Modifier.height(42.dp), color = MaterialTheme.colorScheme.outlineVariant)
-                    Metric("失败", relayMessages.count { it.status == ForwardStatus.FAILED }, Modifier.weight(1f))
+                }
+            }
+            item {
+                HairlineCard(Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Metric("已发送", relayMessages.count { it.status == ForwardStatus.SENT }, Modifier.weight(1f))
+                        VerticalDivider(Modifier.height(42.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                        Metric(
+                            "队列中",
+                            relayMessages.count {
+                                it.status in setOf(ForwardStatus.PENDING, ForwardStatus.SENDING, ForwardStatus.RETRY)
+                            },
+                            Modifier.weight(1f),
+                        )
+                        VerticalDivider(Modifier.height(42.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                        Metric("失败", relayMessages.count { it.status == ForwardStatus.FAILED }, Modifier.weight(1f))
+                    }
+                }
+            }
+            item {
+                RelayButton(
+                    onClick = {
+                        testState = UiOperationState.Running
+                        sendTest { queued ->
+                            testState = if (queued) {
+                                UiOperationState.Success
+                            } else {
+                                UiOperationState.Error("测试消息未能进入发送队列，请重试。")
+                            }
+                        }
+                    },
+                    enabled = settings.enabled && configured,
+                    modifier = Modifier.fillMaxWidth(),
+                    text = "测试邮件投递链路",
+                    state = testState,
+                )
+                AnimatedVisibility(testState is UiOperationState.Success) {
+                    Text(
+                        "测试消息已进入发送队列，可在最近活动中查看结果。",
+                        modifier = Modifier.padding(top = RelaySpacing.xs),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                AnimatedVisibility(testState is UiOperationState.Error) {
+                    Text(
+                        (testState as? UiOperationState.Error)?.message.orEmpty(),
+                        modifier = Modifier.padding(top = RelaySpacing.xs),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+            item {
+                SectionHeading(
+                    "最近活动",
+                    relayMessages.takeIf { it.isNotEmpty() }?.let { "最近 ${minOf(3, it.size)} 条" },
+                )
+            }
+            if (relayMessages.isEmpty()) {
+                item { EmptyState("暂无转发记录", "收到短信或执行链路测试后，状态会显示在这里。") }
+            } else {
+                items(relayMessages.take(3), key = { it.id }) {
+                    RelayMessageCard(it, modifier = Modifier.animateItem())
                 }
             }
         }
-        item {
-            RelayButton(
-                onClick = {
-                    testState = UiOperationState.Running
-                    sendTest { queued ->
-                        testState = if (queued) {
-                            UiOperationState.Success
-                        } else {
-                            UiOperationState.Error("测试消息未能进入发送队列，请重试。")
-                        }
-                    }
-                },
-                enabled = settings.enabled && configured,
-                modifier = Modifier.fillMaxWidth(),
-                text = "测试邮件投递链路",
-                state = testState,
-            )
-            AnimatedVisibility(testState is UiOperationState.Success) {
-                Text(
-                    "测试消息已进入发送队列，可在最近活动中查看结果。",
-                    modifier = Modifier.padding(top = RelaySpacing.xs),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            AnimatedVisibility(testState is UiOperationState.Error) {
-                Text(
-                    (testState as? UiOperationState.Error)?.message.orEmpty(),
-                    modifier = Modifier.padding(top = RelaySpacing.xs),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-        }
-        item {
-            SectionHeading(
-                "最近活动",
-                relayMessages.takeIf { it.isNotEmpty() }?.let { "最近 ${minOf(3, it.size)} 条" },
-            )
-        }
-        if (relayMessages.isEmpty()) {
-            item { EmptyState("暂无转发记录", "收到短信或执行链路测试后，状态会显示在这里。") }
-        } else {
-            items(relayMessages.take(3), key = { it.id }) {
-                RelayMessageCard(it, modifier = Modifier.animateItem())
-            }
-        }
+        RelayLazyListScrollIndicator(
+            state = listState,
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(
+                    top = contentPadding.calculateTopPadding(),
+                    bottom = contentPadding.calculateBottomPadding(),
+                ),
+            testTag = "status-scroll-indicator",
+        )
     }
 }
 

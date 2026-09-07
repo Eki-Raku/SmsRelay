@@ -3,9 +3,13 @@ package com.raku.smsrelay
 import android.Manifest
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.database.ContentObserver
 import android.net.Uri
+import android.provider.Telephony
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -34,6 +38,11 @@ class MainActivity : ComponentActivity() {
     private var pendingSettingsRecoveryStep: OnboardingStep? = null
     private var smsPermissionDenied by mutableStateOf(false)
     private var notificationPermissionDenied by mutableStateOf(false)
+    private val smsContentObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
+        override fun onChange(selfChange: Boolean) {
+            if (hasSmsRole && permissions.canReadSms) viewModel.refreshSms()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -93,6 +102,16 @@ class MainActivity : ComponentActivity() {
             }
         }
         if (hasSmsRole && permissions.canReadSms) viewModel.refreshSms()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        contentResolver.registerContentObserver(Telephony.Sms.CONTENT_URI, true, smsContentObserver)
+    }
+
+    override fun onStop() {
+        contentResolver.unregisterContentObserver(smsContentObserver)
+        super.onStop()
     }
 
     override fun onNewIntent(intent: Intent) {

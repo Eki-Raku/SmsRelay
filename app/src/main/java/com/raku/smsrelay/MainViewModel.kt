@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val container = (application as SmsRelayApplication).container
@@ -48,6 +49,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val mutableEvents = MutableSharedFlow<String>(extraBufferCapacity = 4)
     val events = mutableEvents.asSharedFlow()
+    private var refreshSmsJob: Job? = null
 
     fun saveSettings(
         enabled: Boolean,
@@ -102,7 +104,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun refreshSms() {
-        viewModelScope.launch {
+        refreshSmsJob?.cancel()
+        refreshSmsJob = viewModelScope.launch {
             if (!container.smsRoleManager.isHeld()) {
                 mutableConversations.value = emptyList()
                 mutableThreadMessages.value = emptyList()
@@ -113,12 +116,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 .onFailure { mutableEvents.emit(smsReadFailureMessage(it)) }
             mutableSelectedThreadId.value?.let { threadId ->
                 runCatching { container.systemSmsRepository.messages(threadId) }
-                    .onSuccess { mutableThreadMessages.value = it }
+                    .onSuccess {
+                        if (mutableSelectedThreadId.value == threadId) {
+                            mutableThreadMessages.value = it
+                        }
+                    }
             }
         }
     }
 
     fun openConversation(threadId: Long) {
+        if (mutableSelectedThreadId.value != threadId) {
+            mutableThreadMessages.value = emptyList()
+        }
         mutableSelectedThreadId.value = threadId
         viewModelScope.launch {
             val result = runCatching {
@@ -126,7 +136,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 container.incomingSmsNotifier.dismiss(threadId)
                 container.systemSmsRepository.messages(threadId)
             }
-            result.onSuccess { mutableThreadMessages.value = it }
+            result.onSuccess {
+                if (mutableSelectedThreadId.value == threadId) {
+                    mutableThreadMessages.value = it
+                }
+            }
                 .onFailure { mutableEvents.emit("无法打开这条短信会话") }
             if (result.isSuccess) {
                 runCatching { container.systemSmsRepository.conversations() }

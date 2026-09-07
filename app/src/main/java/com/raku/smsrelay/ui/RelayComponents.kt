@@ -8,12 +8,15 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -22,11 +25,14 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
@@ -53,6 +59,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
@@ -67,6 +76,88 @@ sealed interface UiOperationState {
     data object Running : UiOperationState
     data object Success : UiOperationState
     data class Error(val message: String) : UiOperationState
+}
+
+@Composable
+fun BoxScope.RelayLazyListScrollIndicator(
+    state: LazyListState,
+    modifier: Modifier = Modifier,
+    testTag: String = "lazy-list-scroll-indicator",
+) {
+    val layoutInfo = state.layoutInfo
+    val visibleItems = layoutInfo.visibleItemsInfo
+    val totalItems = layoutInfo.totalItemsCount
+    if (visibleItems.isEmpty() || totalItems <= visibleItems.size) return
+
+    val alpha by animateFloatAsState(
+        targetValue = if (state.isScrollInProgress) 0.72f else 0.24f,
+        animationSpec = androidx.compose.animation.core.tween(RelayTheme.motion.duration(160)),
+        label = "lazy scroll indicator alpha",
+    )
+    val color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha)
+    val averageItemSize = visibleItems.map { it.size }.average().toFloat().coerceAtLeast(1f)
+    val firstItem = visibleItems.first()
+    val partialItemProgress = (
+        (layoutInfo.viewportStartOffset - firstItem.offset).coerceAtLeast(0) / averageItemSize
+    ).coerceIn(0f, 1f)
+    val scrolledItems = firstItem.index + partialItemProgress
+    val maxFirstItem = (totalItems - visibleItems.size).coerceAtLeast(1)
+    val progress = (scrolledItems / maxFirstItem).coerceIn(0f, 1f)
+    val visibleFraction = (visibleItems.size.toFloat() / totalItems).coerceIn(0f, 1f)
+
+    Canvas(
+        modifier
+            .align(Alignment.CenterEnd)
+            .fillMaxHeight()
+            .width(3.dp)
+            .padding(vertical = RelaySpacing.xs)
+            .testTag(testTag),
+    ) {
+        val thumbHeight = (size.height * visibleFraction).coerceAtLeast(32.dp.toPx()).coerceAtMost(size.height)
+        val thumbOffset = (size.height - thumbHeight) * progress
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(0f, thumbOffset),
+            size = Size(size.width, thumbHeight),
+            cornerRadius = CornerRadius(size.width / 2f),
+        )
+    }
+}
+
+@Composable
+fun BoxScope.RelayScrollIndicator(
+    state: ScrollState,
+    modifier: Modifier = Modifier,
+    testTag: String = "scroll-indicator",
+) {
+    if (state.maxValue <= 0) return
+    val alpha by animateFloatAsState(
+        targetValue = if (state.isScrollInProgress) 0.72f else 0.24f,
+        animationSpec = androidx.compose.animation.core.tween(RelayTheme.motion.duration(160)),
+        label = "scroll indicator alpha",
+    )
+    val color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha)
+    val progress = (state.value.toFloat() / state.maxValue).coerceIn(0f, 1f)
+
+    Canvas(
+        modifier
+            .align(Alignment.CenterEnd)
+            .fillMaxHeight()
+            .width(3.dp)
+            .padding(vertical = RelaySpacing.xs)
+            .testTag(testTag),
+    ) {
+        val contentHeight = size.height + state.maxValue
+        val visibleFraction = if (contentHeight <= 0f) 1f else size.height / contentHeight
+        val thumbHeight = (size.height * visibleFraction).coerceAtLeast(32.dp.toPx()).coerceAtMost(size.height)
+        val thumbOffset = (size.height - thumbHeight) * progress
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(0f, thumbOffset),
+            size = Size(size.width, thumbHeight),
+            cornerRadius = CornerRadius(size.width / 2f),
+        )
+    }
 }
 
 @Composable

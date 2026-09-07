@@ -101,7 +101,7 @@ class SystemSmsRepository(context: Context) {
                     MESSAGE_PROJECTION,
                     "${Telephony.Sms.THREAD_ID} = ?",
                     arrayOf(threadId.toString()),
-                    "${Telephony.Sms.DATE} ASC",
+                    "${Telephony.Sms.DATE} DESC, ${Telephony.Sms._ID} DESC",
                 )?.use { cursor ->
                     val idIndex = cursor.getColumnIndexOrThrow(Telephony.Sms._ID)
                     val threadIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.THREAD_ID)
@@ -130,7 +130,7 @@ class SystemSmsRepository(context: Context) {
                         )
                     }
                 }
-            }
+            }.asReversed()
         }
 
     suspend fun insertOutbox(address: String, body: String, subscriptionId: Int?): Uri =

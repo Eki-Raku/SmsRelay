@@ -18,6 +18,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -41,6 +42,7 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -57,13 +59,18 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -74,6 +81,8 @@ import com.raku.smsrelay.onboarding.smsInboxBlockReason
 import com.raku.smsrelay.sms.SmsConversation
 import com.raku.smsrelay.sms.SmsPresentationFactory
 import com.raku.smsrelay.sms.SystemSmsMessage
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 
 @Composable
 fun MessagesScreen(
@@ -189,6 +198,11 @@ private fun ConversationList(
         onComposerVisibilityChanged(showComposer)
     }
     val listState = rememberLazyListState()
+    LaunchedEffect(query) {
+        if (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0) {
+            listState.scrollToItem(0)
+        }
+    }
     val collapsedTitle by remember {
         derivedStateOf {
             listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 52
@@ -289,6 +303,14 @@ private fun ConversationList(
                 }
             }
         }
+        RelayLazyListScrollIndicator(
+            state = listState,
+            modifier = Modifier.padding(
+                top = contentPadding.calculateTopPadding(),
+                bottom = contentPadding.calculateBottomPadding(),
+            ),
+            testTag = "conversation-list-scroll-indicator",
+        )
     }
 
     if (showComposer) {
@@ -519,12 +541,20 @@ private fun ConversationDetail(
             Spacer(Modifier.size(48.dp))
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(7.dp),
-        ) {
-            items(messages, key = { it.id }) { MessageBubble(it, Modifier.animateItem()) }
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            if (messages.isEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        "正在载入短信…",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            } else {
+                key(threadId) {
+                    ConversationMessageList(messages = messages, threadId = threadId)
+                }
+            }
         }
         MessageComposer(
             body = body,
@@ -536,6 +566,104 @@ private fun ConversationDetail(
             },
             modifier = Modifier.padding(horizontal = RelaySpacing.sm, vertical = RelaySpacing.xs),
         )
+    }
+}
+
+@Composable
+private fun BoxScope.ConversationMessageList(
+    messages: List<SystemSmsMessage>,
+    threadId: Long,
+) {
+    val motion = RelayTheme.motion
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = messages.lastIndex)
+    val scope = rememberCoroutineScope()
+    var knownMessageCount by remember(threadId) { mutableIntStateOf(messages.size) }
+    var unseenMessageCount by remember(threadId) { mutableIntStateOf(0) }
+    val atLatest by remember {
+        derivedStateOf {
+            val total = listState.layoutInfo.totalItemsCount
+            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+            total == 0 || lastVisible >= total - 2
+        }
+    }
+
+    LaunchedEffect(messages.size) {
+        val previousCount = knownMessageCount
+        if (messages.size > previousCount) {
+            val lastVisibleBeforeUpdate = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+            val wasNearLatest = lastVisibleBeforeUpdate >= previousCount - 2
+            if (wasNearLatest) {
+                if (motion.reducedMotion) {
+                    listState.scrollToItem(messages.lastIndex)
+                } else {
+                    listState.animateScrollToItem(messages.lastIndex)
+                }
+            } else {
+                unseenMessageCount += messages.size - previousCount
+            }
+        }
+        knownMessageCount = messages.size
+    }
+    LaunchedEffect(listState) {
+        snapshotFlow { atLatest }
+            .distinctUntilChanged()
+            .collect { isAtLatest -> if (isAtLatest) unseenMessageCount = 0 }
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().testTag("conversation-message-list"),
+        state = listState,
+        contentPadding = PaddingValues(horizontal = RelaySpacing.sm, vertical = RelaySpacing.sm),
+        verticalArrangement = Arrangement.spacedBy(RelaySpacing.xs),
+    ) {
+        items(messages, key = { it.id }) { message ->
+            MessageBubble(message, Modifier.animateItem().testTag("message-${message.id}"))
+        }
+    }
+    RelayLazyListScrollIndicator(
+        state = listState,
+        modifier = Modifier.padding(end = RelaySpacing.xxs),
+        testTag = "conversation-message-scroll-indicator",
+    )
+    AnimatedVisibility(
+        visible = !atLatest,
+        enter = fadeIn(tween(motion.duration(180))),
+        exit = fadeOut(tween(motion.duration(140))),
+        modifier = Modifier.align(Alignment.BottomEnd).padding(RelaySpacing.md),
+    ) {
+        Surface(
+            modifier = Modifier
+                .testTag("jump-to-latest")
+                .relayClickable {
+                    unseenMessageCount = 0
+                    scope.launch {
+                        if (motion.reducedMotion) listState.scrollToItem(messages.lastIndex)
+                        else listState.animateScrollToItem(messages.lastIndex)
+                    }
+                },
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.primary,
+            shadowElevation = 6.dp,
+            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
+        ) {
+            Row(
+                modifier = Modifier.height(48.dp).padding(horizontal = RelaySpacing.md),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(RelaySpacing.xs),
+            ) {
+                Icon(
+                    Icons.Outlined.KeyboardArrowDown,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                )
+                Text(
+                    if (unseenMessageCount > 0) "$unseenMessageCount 条新消息" else "回到最新",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
     }
 }
 

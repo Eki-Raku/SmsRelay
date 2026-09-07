@@ -1,5 +1,6 @@
 package com.raku.smsrelay
 
+import android.provider.Telephony
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -11,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
@@ -27,6 +29,7 @@ import com.raku.smsrelay.data.SmtpSettings
 import com.raku.smsrelay.onboarding.MessagingPermissionState
 import com.raku.smsrelay.onboarding.OnboardingStep
 import com.raku.smsrelay.onboarding.OnboardingUiState
+import com.raku.smsrelay.sms.SystemSmsMessage
 import org.junit.Rule
 import org.junit.Test
 import org.junit.Assert.assertEquals
@@ -264,6 +267,44 @@ class DefaultSmsRoleUiTest {
 
         composeRule.onNodeWithText("需要短信读取权限").assertIsDisplayed()
         composeRule.onNodeWithText("授权短信权限").assertIsDisplayed()
+    }
+
+    @Test
+    fun conversationOpensAtTheLatestMessageAndExposesScrollPosition() {
+        val messages = (1L..80L).map { id ->
+            SystemSmsMessage(
+                id = id,
+                threadId = 7L,
+                address = "10086",
+                body = "短信 $id",
+                dateEpochMs = id,
+                type = Telephony.Sms.MESSAGE_TYPE_INBOX,
+                read = true,
+                subscriptionId = null,
+            )
+        }
+        composeRule.setContent {
+            MessagesScreen(
+                conversations = emptyList(),
+                messages = messages,
+                selectedThreadId = 7L,
+                composeRecipient = "10086",
+                hasSmsRole = true,
+                permissions = MessagingPermissionState.allGranted(),
+                requestSmsRole = {},
+                requestSmsPermissions = {},
+                openConversation = {},
+                closeConversation = {},
+                sendSms = { _, _ -> },
+            )
+        }
+
+        composeRule.onNodeWithTag("message-80").assertIsDisplayed()
+        composeRule.onNodeWithTag("conversation-message-scroll-indicator").assertIsDisplayed()
+
+        composeRule.onNodeWithTag("conversation-message-list").performScrollToIndex(0)
+        composeRule.onNodeWithTag("message-1").assertIsDisplayed()
+        composeRule.onNodeWithTag("jump-to-latest").assertIsDisplayed()
     }
 
     @Test
